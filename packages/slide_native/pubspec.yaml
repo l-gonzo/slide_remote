@@ -1,0 +1,21 @@
+name: slide_native
+description: Código nativo de Slide Remote (teclado Bluetooth en Android, BLE en iOS, botones de volumen).
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.lgonzo.slide_native
+        pluginClass: SlideNativePlugin
+      ios:
+        pluginClass: SlideNativePlugin

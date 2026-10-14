@@ -1,0 +1,48 @@
+name: slide_remote
+description: Cambia las diapositivas con los botones de volumen del teléfono.
+publish_to: none
+version: 2.0.0+2
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Código nativo propio: teclado Bluetooth (Android), BLE y volumen (iOS)
+  slide_native:
+    path: packages/slide_native
+
+  bonsoir: ^7.1.5           # descubrimiento de la PC en la red (mDNS/Bonjour)
+  universal_ble: ^2.3.0     # BLE en la app de escritorio (iPhone → PC)
+  file_picker: ^13.1.0      # elegir el PDF del modo Navegador
+  path_provider: ^2.1.5
+  shared_preferences: ^2.3.0
+  wakelock_plus: ^1.2.0
+  ffi: ^2.1.0               # teclas en la PC (SendInput / CGEventPost / uinput)
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/web/
+
+flutter_launcher_icons:
+  image_path: assets/icon/icon.png
+  android: true
+  adaptive_icon_background: "#0E0F12"
+  adaptive_icon_foreground: assets/icon/icon_foreground.png
+  ios: true
+  remove_alpha_ios: true
+  macos:
+    generate: true
+    image_path: assets/icon/icon.png
+  windows:
+    generate: true
+    image_path: assets/icon/icon.png
+    icon_size: 256
