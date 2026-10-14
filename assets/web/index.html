@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slide Remote</title>
+<style>
+  :root {
+    --bg: #000; --panel: rgba(23, 25, 30, .86); --stroke: #2a2e36;
+    --text: #f2f3f5; --muted: #8b919c; --accent: #c8f135; --busy: #ffb547; --off: #5c626d;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; }
+  #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0e0f12; }
+  #empty.show { display: flex; }
+  #empty h1 { margin: 0; font-size: clamp(28px, 5vw, 56px); font-weight: 800; letter-spacing: -.02em; }
+  #empty p { margin: 0; color: var(--muted); font-size: clamp(15px, 2vw, 20px); max-width: 32em; line-height: 1.45; }
+  #empty .mark { width: 72px; height: 72px; border-radius: 20px; background: var(--accent); color: #11140a;
+    display: grid; place-items: center; font-size: 40px; font-weight: 900; }
+  #hud { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 12px; align-items: center;
+    font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--stroke);
+    padding: 8px 8px 8px 14px; border-radius: 999px; transition: opacity .35s; backdrop-filter: blur(8px); }
+  #hud .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+  #hud.on .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  #hud.busy .dot { background: var(--busy); }
+  #pg { color: var(--text); font-variant-numeric: tabular-nums; }
+  #fs { font: inherit; color: #11140a; background: var(--accent); border: 0; border-radius: 999px;
+    padding: 7px 14px; font-weight: 700; cursor: pointer; }
+  body.idle #hud { opacity: 0; pointer-events: none; }
+  body.idle { cursor: none; }
+  :fullscreen #fs { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="empty" class="show">
+  <div class="mark">▶</div>
+  <h1>Slide Remote</h1>
+  <p id="emptyMsg">Conectando con el teléfono…</p>
+</div>
+<div id="hud" class="busy">
+  <span class="dot"></span>
+  <span id="st">Conectando…</span>
+  <span id="pg"></span>
+  <button id="fs" type="button">Pantalla completa</button>
+</div>
+
+<script type="module">
+  import * as pdfjsLib from '/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const hud = document.getElementById('hud');
+  const st = document.getElementById('st');
+  const pg = document.getElementById('pg');
+  const empty = document.getElementById('empty');
+  const emptyMsg = document.getElementById('emptyMsg');
+
+  let doc = null, page = 1, total = 0, ws = null, loading = false;
+  let shown = 0, rendering = false;
+  const cache = new Map(); // "página@ancho x alto" -> canvas ya renderizado
+
+  // ------------------------------------------------------------ PDF
+  async function load() {
+    if (loading) return;
+    loading = true;
+    try {
+      const r = await fetch('/deck.pdf', { cache: 'no-store' });
+      if (!r.ok) {
+        doc = null; total = 0; cache.clear();
+        showEmpty('Elige un PDF en la app del teléfono.');
+        report();
+        return;
+      }
+      const data = new Uint8Array(await r.arrayBuffer());
+      doc = await pdfjsLib.getDocument({ data }).promise;
+      total = doc.numPages;
+      page = Math.min(Math.max(page, 1), total);
+      cache.clear(); shown = 0;
+      empty.classList.remove('show');
+      await show();
+    } catch (e) {
+      console.error(e);
+      showEmpty('No se pudo abrir el PDF.');
+    } finally {
+      loading = false;
+    }
+  }
+
+  function showEmpty(msg) {
+    emptyMsg.textContent = msg;
+    empty.classList.add('show');
+    pg.textContent = '';
+  }
+
+  function sizeKey(n) {
+    return `${n}@${innerWidth}x${innerHeight}x${devicePixelRatio || 1}`;
+  }
+
+  async function renderPage(n) {
+    const key = sizeKey(n);
+    if (cache.has(key)) return cache.get(key);
+    const p = await doc.getPage(n);
+    const base = p.getViewport({ scale: 1 });
+    const scale = Math.min(innerWidth / base.width, innerHeight / base.height);
+    const dpr = devicePixelRatio || 1;
+    const vp = p.getViewport({ scale: scale * dpr });
+    const off = document.createElement('canvas');
+    off.width = Math.floor(vp.width);
+    off.height = Math.floor(vp.height);
+    await p.render({ canvasContext: off.getContext('2d'), viewport: vp }).promise;
+    cache.set(key, off);
+    if (cache.size > 6) cache.delete(cache.keys().next().value);
+    return off;
+  }
+
+  async function show() {
+    if (!doc) return;
+    if (rendering) return; // al terminar se vuelve a llamar si cambió la página
+    rendering = true;
+    try {
+      while (shown !== page) {
+        const target = page;
+        const off = await renderPage(target);
+        if (target !== page) continue; // cambió mientras renderizaba
+        const dpr = devicePixelRatio || 1;
+        canvas.width = off.width;
+        canvas.height = off.height;
+        canvas.style.width = (off.width / dpr) + 'px';
+        canvas.style.height = (off.height / dpr) + 'px';
+        ctx.drawImage(off, 0, 0);
+        shown = target;
+        pg.textContent = `${page} / ${total}`;
+        report();
+      }
+    } finally {
+      rendering = false;
+    }
+    // Pre-renderizar la siguiente para que el cambio sea instantáneo
+    if (page < total) renderPage(page + 1).catch(() => {});
+  }
+
+  function go(d) {
+    if (!doc) return;
+    const n = Math.min(Math.max(page + d, 1), total);
+    if (n === page) return;
+    page = n;
+    show();
+  }
+
+  // ------------------------------------------------------------ teléfono
+  function setHud(state, text) {
+    hud.className = state;
+    st.textContent = text;
+  }
+
+  function report() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ t: 'state', page: doc ? page : 0, total }));
+    }
+  }
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => { setHud('on', 'Teléfono conectado'); report(); };
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.t === 'go') go(msg.d);
+      else if (msg.t === 'reload') { page = 1; load(); }
+      else if (msg.t === 'hello') {
+        if (msg.hasPdf && !doc) load();
+        else if (!msg.hasPdf) showEmpty('Elige un PDF en la app del teléfono.');
+      }
+    };
+    ws.onclose = () => {
+      setHud('busy', 'Reconectando con el teléfono…');
+      setTimeout(connect, 1500);
+    };
+  }
+
+  // ------------------------------------------------------------ teclado, clic, pantalla completa
+  addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'PageDown', ' ', 'Enter', 'ArrowDown'].includes(e.key)) { go(1); e.preventDefault(); }
+    else if (['ArrowLeft', 'PageUp', 'Backspace', 'ArrowUp'].includes(e.key)) { go(-1); e.preventDefault(); }
+    else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+    else if (e.key === 'Home') { page = 1; show(); }
+    else if (e.key === 'End' && doc) { page = total; show(); }
+  });
+
+  document.getElementById('stage').addEventListener('click', (e) => {
+    go(e.clientX < innerWidth / 3 ? -1 : 1);
+  });
+
+  document.getElementById('fs').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFullscreen();
+  });
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  }
+
+  let wakeLock = null;
+  async function keepAwake() {
+    try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* opcional */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
+
+  let resizeTimer = 0;
+  addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { cache.clear(); shown = 0; show(); }, 120);
+  });
+
+  let idleTimer = 0;
+  function wake() {
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add('idle'), 2500);
+  }
+  addEventListener('mousemove', wake);
+  wake();
+  keepAwake();
+  connect();
+</script>
+</body>
+</html>
