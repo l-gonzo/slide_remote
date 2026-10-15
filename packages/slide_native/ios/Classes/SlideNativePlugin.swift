@@ -36,6 +36,9 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
     private var pending: [Data] = []
     private var seq: UInt8 = 0
 
+    // ---- conversión a PDF
+    private var converter: PresentationConverter?
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = SlideNativePlugin()
         let channel = FlutterMethodChannel(name: "slide_native", binaryMessenger: registrar.messenger())
@@ -77,6 +80,35 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             result(bleSend(UInt8(clamping: cmd)))
         case "hidSupported":
             result(false)
+        case "converterAvailable":
+            result(true)
+        case "converterStatus":
+            result(["available": true])
+        case "convertToPdf":
+            guard let input = args?["input"] as? String, let output = args?["output"] as? String else {
+                result(FlutterError(code: "BAD_ARGS", message: "Faltan datos para convertir", details: nil))
+                return
+            }
+            if converter != nil {
+                result(FlutterError(code: "BUSY", message: "Ya hay una conversión en curso", details: nil))
+                return
+            }
+            let conv = PresentationConverter()
+            converter = conv
+            conv.convert(
+                input: URL(fileURLWithPath: input),
+                output: URL(fileURLWithPath: output),
+                aspect: args?["aspect"] as? Double,
+                expected: args?["expected"] as? Int
+            ) { [weak self] res in
+                self?.converter = nil
+                switch res {
+                case .success:
+                    result(nil)
+                case .failure(let e):
+                    result(FlutterError(code: "CONVERT_FAILED", message: e.localizedDescription, details: nil))
+                }
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -143,7 +175,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
     }
 
     private func installVolumeView() {
-        guard volumeView == nil, let window = keyWindow() else { return }
+        guard volumeView == nil, let window = SlideNativePlugin.keyWindow() else { return }
         let view = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 10, height: 10))
         view.alpha = 0.01
         view.isUserInteractionEnabled = false
@@ -151,7 +183,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         volumeView = view
     }
 
-    private func keyWindow() -> UIWindow? {
+    static func keyWindow() -> UIWindow? {
         return UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }

@@ -26,6 +26,8 @@ android {
 
     defaultConfig {
         minSdk = 21
+        // Mantener las clases de LibreOfficeKit (las usa el código nativo por JNI)
+        consumerProguardFiles "proguard-rules.pro"
     }
 
     compileOptions {

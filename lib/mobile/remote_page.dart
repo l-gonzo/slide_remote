@@ -55,8 +55,25 @@ class _RemotePageState extends State<RemotePage> {
           builder: (context, _) {
             if (!c.ready) return const Center(child: CircularProgressIndicator());
             final notes = c.deck != null;
-            return LayoutBuilder(
-              builder: (context, box) => Padding(
+            if (!notes) _notesExpanded = false; // al quitar las notas, volver a la vista normal
+            final expanded = notes && _notesExpanded;
+            return PopScope(
+              // Con las notas expandidas, "atrás" solo las contrae
+              canPop: !expanded,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop && expanded) setState(() => _notesExpanded = false);
+              },
+              child: LayoutBuilder(
+              builder: (context, box) => expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(child: _notesPanel()),
+                        const SizedBox(height: 10),
+                        SizedBox(height: 64, child: _padsRow(compact: true)),
+                      ]),
+                    )
+                  : Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _header(),
@@ -90,6 +107,7 @@ class _RemotePageState extends State<RemotePage> {
                     _addNotesButton(),
                   ],
                 ]),
+              ),
               ),
             );
           },
@@ -372,21 +390,41 @@ class _RemotePageState extends State<RemotePage> {
     }
   }
 
+  Widget _converting() => SrCard(
+        child: Row(children: [
+          const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Convirtiendo a PDF…', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(
+                '${c.convertingName ?? ''}\nSe hace en el teléfono, sin internet. La primera vez tarda más.',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Pal.muted, fontSize: 13, height: 1.4),
+              ),
+            ]),
+          ),
+        ]),
+      );
+
   Widget _browserCard() {
     final b = c.browser;
+    if (c.converting) return _converting();
     if (!b.hasPdf) {
       return SrCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Proyecta un PDF sin instalar nada en la PC',
+          const Text('Proyecta sin instalar nada en la PC',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          const Text(
-            'Exporta tu presentación a PDF, elígela aquí y abre la dirección que aparece '
-            'en el navegador de la PC.',
-            style: TextStyle(color: Pal.muted, height: 1.4),
+          Text(
+            'Elige tu presentación (PowerPoint${c.isIOS ? ', Keynote' : ''} o PDF) y abre en el navegador '
+            'de la PC la dirección que aparece. Si es .pptx u .odp, también verás tus notas aquí.',
+            style: const TextStyle(color: Pal.muted, height: 1.4),
           ),
           const SizedBox(height: 14),
-          PillButton('Elegir PDF', primary: true, icon: Icons.picture_as_pdf_outlined, onTap: c.pickPdf),
+          PillButton('Elegir presentación', primary: true, icon: Icons.slideshow_rounded, onTap: c.pickPresentation),
         ]),
       );
     }
@@ -433,13 +471,21 @@ class _RemotePageState extends State<RemotePage> {
           ),
         const SizedBox(height: 12),
         Row(children: [
-          const Icon(Icons.picture_as_pdf_outlined, size: 18, color: Pal.muted),
+          const Icon(Icons.slideshow_rounded, size: 18, color: Pal.muted),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(b.pdfName ?? 'presentación.pdf',
+            child: Text(b.pdfName ?? 'presentación',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Pal.text)),
           ),
-          PillButton('Cambiar', dense: true, onTap: c.pickPdf),
+          if (c.deck != null)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Tooltip(
+                message: 'Notas cargadas',
+                child: Icon(Icons.sticky_note_2_outlined, size: 18, color: Pal.accent),
+              ),
+            ),
+          PillButton('Cambiar', dense: true, onTap: c.pickPresentation),
         ]),
       ]),
     );
@@ -447,7 +493,7 @@ class _RemotePageState extends State<RemotePage> {
 
   // ================================================================ botones grandes
 
-  Widget _padsRow() {
+  Widget _padsRow({bool compact = false}) {
     final dim = !c.canSend;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 250),
@@ -460,6 +506,7 @@ class _RemotePageState extends State<RemotePage> {
             icon: Icons.arrow_back_rounded,
             hint: c.invert ? 'VOL +' : 'VOL −',
             pulse: c.pulsePrev,
+            compact: compact,
             onTap: () => c.send(forward: false),
           ),
         ),
@@ -472,6 +519,7 @@ class _RemotePageState extends State<RemotePage> {
             icon: Icons.arrow_forward_rounded,
             hint: c.invert ? 'VOL −' : 'VOL +',
             pulse: c.pulseNext,
+            compact: compact,
             onTap: () => c.send(forward: true),
           ),
         ),
@@ -531,13 +579,22 @@ class _RemotePageState extends State<RemotePage> {
             child: Row(children: [
               const Icon(Icons.sticky_note_2_outlined, size: 20, color: Pal.muted),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text('Ver notas del presentador', style: TextStyle(fontWeight: FontWeight.w600)),
+              Expanded(
+                child: c.mode == Mode.wifi
+                    // Por WiFi lo normal es que la presentación esté solo en la PC
+                    ? const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Ver notas del presentador', style: TextStyle(fontWeight: FontWeight.w600)),
+                        SizedBox(height: 2),
+                        Text('Elige la presentación en la app de la PC',
+                            style: TextStyle(color: Pal.muted, fontSize: 12.5)),
+                      ])
+                    : const Text('Ver notas del presentador', style: TextStyle(fontWeight: FontWeight.w600)),
               ),
               if (c.deckLoading)
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               else
-                const Text('Elegir .pptx', style: TextStyle(color: Pal.muted, fontSize: 13)),
+                Text(c.mode == Mode.wifi ? 'o elígela aquí' : 'Elegir archivo',
+                    style: const TextStyle(color: Pal.muted, fontSize: 13)),
             ]),
           ),
         ),
@@ -552,6 +609,14 @@ class _RemotePageState extends State<RemotePage> {
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
+          if (c.notesFromPc)
+            const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Tooltip(
+                message: 'Notas enviadas por la app de la PC',
+                child: Icon(Icons.computer_rounded, size: 16, color: Pal.muted),
+              ),
+            ),
           Text(
             '${c.slide + 1} / $total',
             style: monoStyle.copyWith(color: Pal.accent, fontSize: 15, fontWeight: FontWeight.w700),
@@ -578,6 +643,11 @@ class _RemotePageState extends State<RemotePage> {
             _tinyButton(Icons.remove, () => c.adjustSlide(-1)),
             _tinyButton(Icons.add, () => c.adjustSlide(1)),
           ],
+          _tinyButton(
+            _notesExpanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
+            () => setState(() => _notesExpanded = !_notesExpanded),
+            tooltip: _notesExpanded ? 'Contraer notas' : 'Expandir notas',
+          ),
         ]),
         const Divider(color: Pal.stroke, height: 14),
         Expanded(
@@ -585,7 +655,7 @@ class _RemotePageState extends State<RemotePage> {
             key: ValueKey(c.slide), // al cambiar de diapositiva, regresar arriba
             padding: const EdgeInsets.only(right: 8),
             child: Text(
-              hasNotes ? s!.notes : 'Sin notas en esta diapositiva.',
+              hasNotes ? s.notes : 'Sin notas en esta diapositiva.',
               style: TextStyle(
                 fontSize: _notesFont,
                 height: 1.45,
@@ -607,18 +677,20 @@ class _RemotePageState extends State<RemotePage> {
     );
   }
 
-  Widget _tinyButton(IconData icon, VoidCallback onTap) => SizedBox(
+  Widget _tinyButton(IconData icon, VoidCallback onTap, {String? tooltip}) => SizedBox(
         width: 34,
         height: 30,
         child: IconButton(
           padding: EdgeInsets.zero,
           iconSize: 18,
+          tooltip: tooltip,
           onPressed: onTap,
           icon: Icon(icon, color: Pal.muted),
         ),
       );
 
   double _notesFont = 19;
+  bool _notesExpanded = false;
 
   // ================================================================ ajustes
 
@@ -642,16 +714,24 @@ class _RemotePageState extends State<RemotePage> {
               const SizedBox(height: 14),
               const Caption('Notas del presentador'),
               if (c.deck == null)
-                PillButton('Elegir presentación (.pptx)', icon: Icons.sticky_note_2_outlined, onTap: () {
+                PillButton('Elegir presentación (.pptx, .odp)', icon: Icons.sticky_note_2_outlined, onTap: () {
                   Navigator.pop(ctx);
                   c.pickNotes();
                 })
               else ...[
                 Row(children: [
-                  const Icon(Icons.slideshow_rounded, size: 18, color: Pal.muted),
+                  Icon(c.notesFromPc ? Icons.computer_rounded : Icons.slideshow_rounded, size: 18, color: Pal.muted),
                   const SizedBox(width: 8),
                   Expanded(child: Text(c.deckName ?? 'presentación.pptx', maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ]),
+                if (c.notesFromPc)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Vienen de la app de la PC. Para cambiarlas, elige otra presentación allá.',
+                      style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
+                    ),
+                  ),
                 const SizedBox(height: 10),
                 Row(children: [
                   const Expanded(child: Text('Tamaño del texto')),
@@ -661,14 +741,16 @@ class _RemotePageState extends State<RemotePage> {
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   PillButton('Volver a la diapositiva 1', dense: true, onTap: c.restartNotes),
-                  PillButton('Cambiar archivo', dense: true, onTap: () {
-                    Navigator.pop(ctx);
-                    c.pickNotes();
-                  }),
-                  PillButton('Quitar notas', dense: true, onTap: () {
-                    Navigator.pop(ctx);
-                    c.clearNotes();
-                  }),
+                  if (!c.notesFromPc) ...[
+                    PillButton('Cambiar archivo', dense: true, onTap: () {
+                      Navigator.pop(ctx);
+                      c.pickNotes();
+                    }),
+                    PillButton('Quitar notas', dense: true, onTap: () {
+                      Navigator.pop(ctx);
+                      c.clearNotes();
+                    }),
+                  ],
                 ]),
                 const SizedBox(height: 10),
                 const Text(
@@ -703,7 +785,11 @@ class _Pad extends StatefulWidget {
     required this.pulse,
     required this.onTap,
     this.counter,
+    this.compact = false,
   });
+
+  /// Versión baja (una sola fila) para cuando las notas ocupan la pantalla.
+  final bool compact;
 
   final bool primary;
   final String label;
@@ -786,7 +872,7 @@ class _PadState extends State<_Pad> with SingleTickerProviderStateMixin {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.onTap,
-          child: Stack(children: [
+          child: widget.compact ? _compactContent(fg) : Stack(children: [
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -839,4 +925,21 @@ class _PadState extends State<_Pad> with SingleTickerProviderStateMixin {
       ),
     );
   }
+
+  Widget _compactContent(Color fg) => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(widget.icon, size: 26, color: fg),
+              const SizedBox(width: 8),
+              Text(
+                widget.label.toUpperCase(),
+                style: TextStyle(color: fg, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1.2),
+              ),
+            ]),
+          ),
+        ),
+      );
 }

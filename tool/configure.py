@@ -88,9 +88,33 @@ def main():
         test.unlink()  # la prueba de ejemplo no aplica a esta app
 
     # ------------------------------------------------------------------ 2. Android
-    log("Android: nombre de la app")
+    log("Android: nombre de la app y empaquetado del convertidor (LibreOffice)")
     edit_text(ROOT / "android/app/src/main/AndroidManifest.xml",
               lambda s: re.sub(r'android:label="[^"]*"', f'android:label="{APP_NAME}"', s, count=1))
+
+    def gradle_packaging(s):
+        if "useLegacyPackaging" not in s:
+            block = (
+                "android {\n"
+                "    // LibreOffice (convertidor a PDF): bibliotecas nativas comprimidas en el APK y\n"
+                "    // extraídas al instalar, como espera LibreOfficeKit.\n"
+                "    packaging {\n"
+                "        jniLibs {\n"
+                "            useLegacyPackaging = true\n"
+                "            pickFirsts += listOf(\"**/libc++_shared.so\")\n"
+                "        }\n"
+                "    }\n"
+            )
+            s = re.sub(r"^android \{\n", block, s, count=1, flags=re.M)
+        # Versiones anteriores agregaban "noCompress" (no comprimir NADA en el APK). No hace
+        # falta —LibreOffice lee sus assets con AAssetManager— y triplicaba el tamaño: quitarlo.
+        s = re.sub(
+            r"    // LibreOffice lee sus archivos directo del APK[^\n]*\n"
+            r"    androidResources \{\n\s*noCompress \+= listOf\(\"\"\)\n\s*\}\n",
+            "", s)
+        return s
+
+    edit_text(ROOT / "android/app/build.gradle.kts", gradle_packaging)
 
     # ------------------------------------------------------------------ 3. iOS
     log("iOS: permisos, Bonjour y versión mínima 14.0")

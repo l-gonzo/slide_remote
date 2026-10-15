@@ -5,6 +5,14 @@ plugins {
 }
 
 android {
+    // LibreOffice (convertidor a PDF): bibliotecas nativas comprimidas en el APK y
+    // extraídas al instalar, como espera LibreOfficeKit.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            pickFirsts += listOf("**/libc++_shared.so")
+        }
+    }
     namespace = "dev.lgonzo.slide_remote"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion

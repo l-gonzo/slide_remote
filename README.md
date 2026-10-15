@@ -15,7 +15,7 @@ Cambia las diapositivas con los botones de volumen del teléfono. Es un solo pro
 - **Bluetooth (Android):** la PC empareja el teléfono como un teclado y recibe AvPág/RePág. Funciona con PowerPoint, Keynote, Impress, Google Slides, visores de PDF…
 - **Bluetooth (iPhone):** iOS no permite que una app actúe como teclado Bluetooth. El iPhone anuncia un servicio Bluetooth LE y la app de escritorio se conecta sola.
 - **WiFi:** la app de escritorio se anuncia en la red (mDNS/Bonjour) y el teléfono la encuentra sin escribir IPs. Si la red bloquea mDNS, se puede agregar por IP.
-- **Navegador:** el teléfono sirve una página web. En la PC abres la dirección que muestra la app (por ejemplo `192.168.1.23:8080`) en cualquier navegador y ahí se proyecta tu presentación **exportada a PDF**. No controla PowerPoint; muestra el PDF.
+- **Navegador:** el teléfono sirve una página web. En la PC abres la dirección que muestra la app (por ejemplo `192.168.1.23:8080`) en cualquier navegador y ahí se proyecta tu presentación. Puedes elegir un **.pptx** (o .ppt/.odp, y .key en iPhone): el teléfono lo **convierte a PDF él mismo, sin internet**, y si es .pptx también carga tus notas. Un PDF se usa tal cual.
 
 ## Requisitos
 
@@ -64,13 +64,35 @@ flutter run --release -d <tu-iphone>
 
 Con un Apple ID gratuito, la app deja de abrir a los 7 días y hay que volver a instalarla. Con la cuenta de desarrollador (US$99/año) dura un año o se publica en TestFlight/App Store.
 
+## Conversión de presentaciones a PDF (modo Navegador)
+
+- **iPhone:** usa el visor de documentos de iOS (el de Archivos y Mail). No hay que instalar nada extra.
+- **Android:** usa LibreOffice dentro de la app. LibreOffice no viene en el repositorio (pesa ~100 MB); se compila **una vez** en tu PC con:
+
+  ```bash
+  tool/build_libreoffice_android.sh --deps    # la primera vez (instala paquetes con apt)
+  tool/build_libreoffice_android.sh           # siguientes veces
+  ```
+
+  Necesita ~40 GB libres y tarda de 1 a 4 horas. Descarga LibreOffice 26.8, lo compila para arm64 solo con lo necesario para presentaciones y PDF, y copia el resultado al plugin (`packages/slide_native/android/src/main/jniLibs` y `assets`, que están en `.gitignore`). Después compila la app como siempre:
+
+  ```bash
+  flutter build apk --release --split-per-abi   # el convertidor va en app-arm64-v8a-release.apk
+  ```
+
+  Si compilas la app sin haber corrido el script, todo funciona igual excepto la conversión: la app avisa y pide un PDF.
+
+- LibreOffice se distribuye bajo la licencia MPL 2.0; el script copia su licencia dentro de la app.
+- Las diapositivas ocultas no se exportan; las animaciones no existen en PDF (se muestra cada diapositiva completa).
+
 ## Notas del presentador
 
-En la pantalla principal toca **Ver notas del presentador** y elige el `.pptx` (el mismo que vas a presentar). El teléfono muestra las notas de la diapositiva actual, su título y cuál sigue. No se convierte nada: las notas se leen directo del archivo, sin internet.
+En el modo Navegador, si eliges un `.pptx` las notas se cargan solas. En los demás modos, toca **Ver notas del presentador** y elige el `.pptx` (el mismo que vas a presentar). El teléfono muestra las notas de la diapositiva actual, su título y cuál sigue. No se convierte nada: las notas se leen directo del archivo, sin internet.
 
+- **Modo WiFi:** no hace falta tener la presentación en el teléfono. En la app de escritorio toca **Elegir presentación** en «Notas en el teléfono» y las notas llegan solas al teléfono (por HTTP en el puerto 50506, solo a teléfonos que ya se conectaron por WiFi). Si guardas cambios en el `.pptx`, se actualizan. La app de escritorio recuerda el archivo para la próxima vez.
 - **Modo Navegador:** la diapositiva se sincroniza sola con lo que muestra el navegador.
 - **Bluetooth y WiFi:** el teléfono no puede ver la pantalla de la PC, así que **cuenta las pulsaciones**. Lee las animaciones del `.pptx` para saber cuántos clics lleva cada diapositiva antes de pasar a la siguiente (igual que PowerPoint). Si se desfasa (por ejemplo, si cambiaste de diapositiva con el mouse), corrígelo con **− / +** en el panel; eso no mueve nada en la PC.
-- Las diapositivas ocultas se saltan. Keynote (`.key`) y PDF no traen notas que se puedan leer.
+- Formatos con notas: `.pptx` (PowerPoint, OnlyOffice, WPS, Google Slides exportado) y sus variantes `.pptm/.ppsx/.potx`, y `.odp` (LibreOffice/OpenOffice, también `.otp` y `.fodp`). En la app de escritorio, `.ppt`, `.pps`, `.key` y `.dps` también funcionan si la PC tiene LibreOffice instalado (los convierte en segundo plano). Las diapositivas ocultas se saltan. Un PDF no trae notas.
 
 ## Permisos por sistema (app de escritorio)
 
@@ -112,7 +134,11 @@ lib/
 packages/slide_native/         plugin propio
   android/…/BtHidKeyboard.java teclado Bluetooth HID
   android/…/SlideNativePlugin.java  volumen, permisos
+  android/…/PptxConverter.java presentación → PDF con LibreOfficeKit
+  android/…/org/libreoffice/kit/ clases JNI de LibreOffice (MPL 2.0)
   ios/Classes/SlideNativePlugin.swift  BLE periférico, volumen
+  ios/Classes/PresentationConverter.swift  presentación → PDF con WebKit
 assets/web/                    página del modo Navegador + pdf.js 4.10 (licencia Apache 2.0)
 tool/configure.py              prepara las plataformas
+tool/build_libreoffice_android.sh  compila LibreOffice para el convertidor de Android
 ```

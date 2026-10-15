@@ -56,6 +56,39 @@ abstract final class NativeBridge {
     ];
   }
 
+  // ---------------------------------------------------------------- conversión a PDF
+
+  /// Android: true si la app se compiló con LibreOffice. iOS: siempre true.
+  static Future<bool> converterAvailable() async => (await converterStatus()).$1;
+
+  /// (disponible, motivo si no lo está). El motivo distingue "no viene LibreOffice",
+  /// "no cargó" y "la parte nativa de la app está desactualizada".
+  static Future<(bool, String?)> converterStatus() async {
+    try {
+      final m = await _methods.invokeMethod<Map<Object?, Object?>>('converterStatus');
+      return ((m?['available'] as bool?) ?? false, m?['reason'] as String?);
+    } on MissingPluginException {
+      return (false, 'la parte nativa de la app no tiene el convertidor (recompila con flutter clean)');
+    } on PlatformException catch (e) {
+      return (false, e.message ?? e.code);
+    }
+  }
+
+  /// Convierte una presentación a PDF dentro del teléfono.
+  /// Lanza [PlatformException] con un mensaje legible si falla.
+  static Future<void> convertToPdf({
+    required String input,
+    required String output,
+    double? aspect,
+    int? expected,
+  }) =>
+      _methods.invokeMethod<void>('convertToPdf', {
+        'input': input,
+        'output': output,
+        'aspect': aspect,
+        'expected': expected,
+      });
+
   // ---------------------------------------------------------------- iOS: BLE periférico
 
   static Future<void> bleStart() => call('bleStart');

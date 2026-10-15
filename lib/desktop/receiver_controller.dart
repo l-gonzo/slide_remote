@@ -9,6 +9,7 @@ import 'package:universal_ble/universal_ble.dart';
 
 import '../common/protocol.dart';
 import 'key_injector.dart';
+import 'notes_host.dart';
 
 enum BleStatus { unknown, off, unauthorized, unsupported, searching, connecting, connected }
 
@@ -23,8 +24,19 @@ class Received {
 
 /// App de escritorio: recibe comandos del teléfono (WiFi/UDP y Bluetooth LE) y presiona teclas.
 class ReceiverController extends ChangeNotifier {
+  ReceiverController() {
+    notes = NotesHost(isAllowed: _isKnownPhone);
+    notes.addListener(_notify);
+  }
+
   final KeyInjector injector = KeyInjector.create();
   final String hostName = _niceHostName();
+
+  /// Notas del .pptx que está en la PC; se mandan al teléfono por WiFi.
+  late final NotesHost notes;
+
+  /// Teléfonos que hablaron por UDP hace poco: los únicos que pueden pedir las notas.
+  final Map<String, DateTime> _phones = {};
 
   // ---- WiFi
   RawDatagramSocket? _udp;
@@ -60,10 +72,14 @@ class ReceiverController extends ChangeNotifier {
 
   Future<void> init() async {
     injector.init();
+    await notes.start();
     await _startWifi();
     await _startBle();
     // Refresca estados que dependen del tiempo (teléfono visto hace poco, permisos)
-    _tick = Timer.periodic(const Duration(seconds: 2), (_) => _notify());
+    _tick = Timer.periodic(const Duration(seconds: 2), (_) {
+      notes.checkModified();
+      _notify();
+    });
     _notify();
   }
 
@@ -77,6 +93,8 @@ class ReceiverController extends ChangeNotifier {
     _valueSub?.cancel();
     _connSub?.cancel();
     _bleDevice?.disconnect();
+    notes.removeListener(_notify);
+    notes.dispose();
     injector.dispose();
     super.dispose();
   }
@@ -138,13 +156,20 @@ class ReceiverController extends ChangeNotifier {
     if (parts.isEmpty || parts.first != Udp.prefix || parts.length < 2) return;
     wifiPeer = d.address.address;
     _wifiSeen = DateTime.now();
+    _phones[d.address.address] = _wifiSeen!;
     switch (parts[1]) {
       case 'PING':
         s.send(ascii.encode(Udp.pong(hostName)), d.address, d.port);
+        if (notes.port > 0) s.send(ascii.encode(Udp.notes(notes.version, notes.port)), d.address, d.port);
         _notify();
       case 'C':
         if (parts.length >= 3) _press(int.tryParse(parts[2]) ?? 0, 'WiFi');
     }
+  }
+
+  bool _isKnownPhone(InternetAddress a) {
+    final seen = _phones[a.address];
+    return seen != null && DateTime.now().difference(seen) < const Duration(minutes: 2);
   }
 
   static Future<List<String>> _localIps() async {

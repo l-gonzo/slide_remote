@@ -42,6 +42,12 @@ class WifiClient extends ChangeNotifier {
   /// Se llama cuando aparece de nuevo la última PC usada (para reconectar sola).
   String? preferredName;
 
+  /// La PC anunció sus notas: (versión, puerto HTTP). Versión 0 = la PC no tiene notas.
+  void Function(int version, int port)? onNotes;
+
+  /// Dirección de la PC elegida (para pedirle las notas).
+  InternetAddress? get targetAddress => _targetAddress;
+
   Future<void> start() async {
     if (_running) return;
     _running = true;
@@ -103,9 +109,16 @@ class WifiClient extends ChangeNotifier {
         if (event != RawSocketEvent.read) return;
         final d = s.receive();
         if (d == null) return;
-        final msg = ascii.decode(d.data, allowInvalid: true);
+        final msg = ascii.decode(d.data, allowInvalid: true).trim();
+        if (_targetAddress == null || d.address.address != _targetAddress!.address) return;
+        if (msg.startsWith('${Udp.prefix} NOTES ')) {
+          final p = msg.split(' ');
+          final v = p.length > 2 ? int.tryParse(p[2]) : null;
+          final port = p.length > 3 ? int.tryParse(p[3]) : null;
+          if (v != null && port != null) onNotes?.call(v, port);
+          return;
+        }
         if (!msg.startsWith('${Udp.prefix} PONG')) return;
-        if (_targetAddress != null && d.address.address != _targetAddress!.address) return;
         final sent = _pingSentAt;
         latencyMs = sent == null ? null : DateTime.now().difference(sent).inMilliseconds;
         _lastPong = DateTime.now();

@@ -46,6 +46,8 @@ class _ReceiverPageState extends State<ReceiverPage> {
                 const SizedBox(height: 22),
                 _activity(),
                 const SizedBox(height: 14),
+                _notesCard(),
+                const SizedBox(height: 14),
                 if (c.injector.problem != null) ...[_permissionCard(), const SizedBox(height: 14)],
                 _wifiCard(),
                 const SizedBox(height: 14),
@@ -137,6 +139,67 @@ class _ReceiverPageState extends State<ReceiverPage> {
                   : 'Por ${l.source}  ·  ${c.count} ${c.count == 1 ? 'cambio' : 'cambios'}',
               style: const TextStyle(color: Pal.muted),
             ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _notesCard() {
+    final n = c.notes;
+    final deck = n.deck;
+    return SrCard(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(color: Pal.cardHi, borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.sticky_note_2_outlined, color: deck != null ? Pal.accent : Pal.muted, size: 20),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Expanded(
+                child: Text('Notas en el teléfono', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ),
+              if (n.loading)
+                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                Dot(connColor(deck != null ? Conn.on : Conn.off)),
+            ]),
+            const SizedBox(height: 4),
+            if (deck == null)
+              const Text(
+                'Elige aquí tu presentación (PowerPoint, LibreOffice, OnlyOffice…) y el teléfono mostrará sus notas por WiFi. '
+                'El archivo no tiene que estar en el teléfono.',
+                style: TextStyle(color: Pal.muted, height: 1.4),
+              )
+            else ...[
+              Text(n.name ?? 'presentación.pptx',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(
+                '${n.slideCount} diapositivas · ${n.withNotes} con notas. '
+                'Si guardas cambios en el archivo, se actualizan solas.',
+                style: const TextStyle(color: Pal.muted, height: 1.4, fontSize: 13),
+              ),
+            ],
+            if (n.error != null) ...[
+              const SizedBox(height: 6),
+              Text(n.error!, style: const TextStyle(color: Pal.error, height: 1.4, fontSize: 13)),
+            ],
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              PillButton(
+                deck == null ? 'Elegir presentación' : 'Cambiar',
+                primary: deck == null,
+                dense: true,
+                icon: Icons.folder_open_rounded,
+                onTap: n.loading ? null : n.pick,
+              ),
+              if (deck != null) PillButton('Quitar', dense: true, onTap: n.clear),
+            ]),
           ]),
         ),
       ]),

@@ -1,31 +1,11 @@
-# Flutter / Dart
 .dart_tool/
+.packages
+build/
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-build/
-
-# IDE
-.idea/
 *.iml
-.vscode/
-*.swp
-.DS_Store
+.idea/
 
-# Android
-android/local.properties
-android/.gradle/
-android/key.properties
-*.jks
-*.keystore
-
-# iOS / macOS
-ios/Pods/
-macos/Pods/
-**/xcuserdata/
-**/Flutter/ephemeral/
-
-# Windows / Linux
-windows/flutter/ephemeral/
-linux/flutter/ephemeral/
+# LibreOffice compilado para Android (lo genera tool/build_libreoffice_android.sh; ~100 MB)
+packages/slide_native/android/src/main/jniLibs/
+packages/slide_native/android/src/main/assets/

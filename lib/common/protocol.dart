@@ -4,6 +4,10 @@ library;
 /// Puerto UDP donde escucha la app de escritorio.
 const int kUdpPort = 50505;
 
+/// Puerto TCP (HTTP) donde la app de escritorio sirve las notas de la presentación.
+/// Si está ocupado se usa otro; el puerto real se anuncia en el mensaje NOTES.
+const int kNotesPort = 50506;
+
 /// Tipo de servicio Bonjour/mDNS que anuncia la app de escritorio.
 /// Debe coincidir con NSBonjourServices en los Info.plist.
 const String kServiceType = '_slideremote._udp';
@@ -54,4 +58,8 @@ abstract final class Udp {
   static String command(int cmd) => '$prefix C $cmd';
   static const String ping = '$prefix PING';
   static String pong(String name) => '$prefix PONG $name';
+
+  /// La PC avisa qué notas tiene: versión (0 = ninguna) y puerto HTTP para pedirlas
+  /// en GET /notes. Se manda junto con cada PONG; el teléfono solo descarga si cambió.
+  static String notes(int version, int port) => '$prefix NOTES $version $port';
 }

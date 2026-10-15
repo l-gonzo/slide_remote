@@ -1,17 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'browser_server.dart';
 import 'native_bridge.dart';
-import 'pptx_notes.dart';
 import 'wifi_client.dart';
 
 enum Mode { bluetooth, wifi, browser }
@@ -23,6 +26,7 @@ enum BtState { unknown, unavailable, off, noPermission, idle, connecting, connec
 class RemoteController extends ChangeNotifier {
   RemoteController() {
     wifi.addListener(notifyListeners);
+    wifi.onNotes = _onPcNotes;
     browser.addListener(_onBrowserChanged);
   }
 
@@ -50,12 +54,56 @@ class RemoteController extends ChangeNotifier {
   bool _btAuto = false;
 
   // ---- notas del presentador (.pptx)
-  List<SlideInfo>? deck;
-  String? deckName;
+  // Hay dos fuentes: un .pptx elegido en el teléfono, o las que manda la app de escritorio
+  // por WiFi (el archivo se queda en la PC). En el modo WiFi mandan las de la PC si las hay.
+  List<SlideInfo>? _localDeck;
+  String? _localName;
+  int _localTotal = 0;
+  int _localSlide = 0;
+  int _localStep = 0;
+
+  List<SlideInfo>? _pcDeck;
+  String? _pcName;
+  int _pcTotal = 0;
+  int _pcSlide = 0;
+  int _pcStep = 0;
+  int _pcVersion = -1; // versión de las notas que ya se descargaron de la PC
+  bool _pcFetching = false;
+  String? _pcFor; // PC de la que vienen (host)
+
   bool deckLoading = false;
-  int slide = 0; // índice en [deck] (solo diapositivas visibles)
-  int step = 0; // clics de animación ya dados en la diapositiva actual
   int _lastBrowserPage = 0;
+
+  /// true si las notas que se ven vienen de la app de escritorio.
+  bool get notesFromPc => mode == Mode.wifi && _pcDeck != null;
+
+  List<SlideInfo>? get deck => notesFromPc ? _pcDeck : _localDeck;
+  String? get deckName => notesFromPc ? _pcName : _localName;
+  int get _deckTotal => notesFromPc ? _pcTotal : _localTotal;
+
+  /// Índice en [deck] (solo diapositivas visibles).
+  int get slide => notesFromPc ? _pcSlide : _localSlide;
+  set slide(int v) {
+    if (notesFromPc) {
+      _pcSlide = v;
+    } else {
+      _localSlide = v;
+    }
+  }
+
+  /// Clics de animación ya dados en la diapositiva actual.
+  int get step => notesFromPc ? _pcStep : _localStep;
+  set step(int v) {
+    if (notesFromPc) {
+      _pcStep = v;
+    } else {
+      _localStep = v;
+    }
+  }
+
+  // ---- conversión a PDF (modo Navegador)
+  bool converting = false;
+  String? convertingName;
 
   SlideInfo? get currentSlide => (deck == null || deck!.isEmpty) ? null : deck![slide];
   SlideInfo? get nextSlide => (deck == null || slide + 1 >= deck!.length) ? null : deck![slide + 1];
@@ -196,7 +244,7 @@ class RemoteController extends ChangeNotifier {
           _nudge('La PC no responde. ¿Está abierta Slide Remote?');
         }
       case Mode.browser:
-        if (!browser.hasPdf) return _nudge('Primero elige un PDF');
+        if (!browser.hasPdf) return _nudge('Primero elige tu presentación');
         if (!browser.go(forward ? 1 : -1)) _nudge('Abre la dirección en el navegador de la PC');
     }
   }
@@ -329,6 +377,7 @@ class RemoteController extends ChangeNotifier {
   // ================================================================ WiFi
 
   Future<void> selectPc(PcEntry pc) async {
+    if (wifi.target?.key != pc.key) _dropPcNotes();
     await wifi.select(pc);
     await _prefs.setString('wifi_name', pc.name);
     await _prefs.setString('wifi_host', pc.host);
@@ -350,18 +399,82 @@ class RemoteController extends ChangeNotifier {
     if (await f.exists()) await browser.setPdf(f, name);
   }
 
-  Future<void> pickPdf() async {
-    final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf']);
+  /// Formatos que se pueden elegir en el modo Navegador.
+  List<String> get presentationExtensions =>
+      ['pdf', ..._mobileNotesExtensions, 'ppt', if (isIOS) 'key'];
+
+  /// En el teléfono el selector de archivos filtra por tipo MIME y no reconoce extensiones
+  /// raras (.fodp, .otp…): solo las comunes.
+  static const _mobileNotesExtensions = ['pptx', 'ppsx', 'odp'];
+
+  /// Modo Navegador: elige PDF o presentación. Las presentaciones se convierten a PDF
+  /// dentro del teléfono y, si es .pptx, también se cargan sus notas.
+  Future<void> pickPresentation() async {
+    final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: presentationExtensions);
     if (picked == null) return;
+    final name = picked.name;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    final bytes = await picked.readAsBytes();
+    final dir = await getApplicationSupportDirectory();
     final dest = await _pdfStore();
-    final path = picked.path;
-    if (path != null && await File(path).exists()) {
-      await File(path).copy(dest.path);
-    } else {
-      await dest.writeAsBytes(await picked.readAsBytes(), flush: true);
+
+    if (ext == 'pdf') {
+      await dest.writeAsBytes(bytes, flush: true);
+      await _prefs.setString('pdf_name', name);
+      await browser.setPdf(dest, name);
+      return;
     }
-    await _prefs.setString('pdf_name', picked.name);
-    await browser.setPdf(dest, picked.name);
+
+    converting = true;
+    convertingName = name;
+    notifyListeners();
+    final input = File('${dir.path}/entrada.$ext');
+    final output = File('${dir.path}/convertido.pdf');
+    try {
+      await input.writeAsBytes(bytes, flush: true);
+
+      // Notas del mismo archivo (.pptx, .odp y afines; .ppt y .key no se pueden leer directo)
+      PptxDeck? info;
+      if (kNotesExtensions.contains(ext)) {
+        try {
+          info = await PptxNotes.parse(bytes);
+          await _loadNotes(bytes, name, quiet: true);
+        } catch (_) {
+          info = null; // sin notas, pero se intenta convertir igual
+        }
+      }
+
+      final (available, reason) = await NativeBridge.converterStatus();
+      if (!available) {
+        _nudge(reason == null
+            ? 'Esta versión no incluye el convertidor. Elige la presentación exportada a PDF.'
+            : 'Convertidor no disponible: $reason');
+        return;
+      }
+      if (await output.exists()) await output.delete();
+      await NativeBridge.convertToPdf(
+        input: input.path,
+        output: output.path,
+        aspect: info?.aspect,
+        expected: info?.total,
+      );
+      await output.copy(dest.path);
+      await _prefs.setString('pdf_name', name);
+      await browser.setPdf(dest, name);
+      if (deck != null && kNotesExtensions.contains(ext)) _nudge('Listo: presentación convertida y notas cargadas');
+    } on PlatformException catch (e) {
+      _nudge('No se pudo convertir: ${e.message ?? e.code}');
+    } catch (e) {
+      _nudge('No se pudo convertir: $e');
+    } finally {
+      converting = false;
+      convertingName = null;
+      try {
+        if (await input.exists()) await input.delete();
+        if (await output.exists()) await output.delete();
+      } catch (_) {}
+      notifyListeners();
+    }
   }
 
   // ================================================================ notas
@@ -400,12 +513,27 @@ class RemoteController extends ChangeNotifier {
 
   void _onBrowserChanged() {
     final page = browser.page;
-    if (page != _lastBrowserPage && page > 0 && deck != null && deck!.isNotEmpty) {
-      slide = (page - 1).clamp(0, deck!.length - 1);
-      step = 0;
+    if (page != _lastBrowserPage && page > 0) {
+      final i = _slideForPage(page);
+      if (i != null) {
+        slide = i;
+        step = 0;
+      }
     }
     _lastBrowserPage = page;
     notifyListeners();
+  }
+
+  /// Si el PDF incluye las diapositivas ocultas (tiene tantas páginas como el archivo),
+  /// se busca por número; si no, la página N es la N-ésima diapositiva visible.
+  int? _slideForPage(int page) {
+    final d = deck;
+    if (d == null || d.isEmpty) return null;
+    if (browser.total == _deckTotal && _deckTotal != d.length) {
+      final i = d.indexWhere((s) => s.number == page);
+      return i >= 0 ? i : null; // diapositiva oculta: se queda la anterior
+    }
+    return (page - 1).clamp(0, d.length - 1);
   }
 
   Future<File> _notesStore() async {
@@ -419,36 +547,44 @@ class RemoteController extends ChangeNotifier {
     final f = await _notesStore();
     if (!await f.exists()) return;
     try {
-      deck = await PptxNotes.parse(await f.readAsBytes());
-      deckName = name;
-      slide = (_prefs.getInt('notes_slide') ?? 0).clamp(0, deck!.isEmpty ? 0 : deck!.length - 1);
+      final parsed = await PptxNotes.parse(await f.readAsBytes());
+      _localDeck = parsed.slides;
+      _localTotal = parsed.total;
+      _localName = name;
+      _localSlide = (_prefs.getInt('notes_slide') ?? 0).clamp(0, parsed.slides.isEmpty ? 0 : parsed.slides.length - 1);
     } catch (_) {
-      deck = null;
+      _localDeck = null;
     }
   }
 
+  /// Carga las notas de un .pptx ya leído. Lanza FormatException si no es válido.
+  Future<void> _loadNotes(Uint8List bytes, String name, {required bool quiet}) async {
+    final parsed = await PptxNotes.parse(bytes);
+    if (parsed.slides.isEmpty) throw const FormatException('La presentación no tiene diapositivas.');
+    await (await _notesStore()).writeAsBytes(bytes, flush: true);
+    await _prefs.setString('notes_name', name);
+    _localDeck = parsed.slides;
+    _localTotal = parsed.total;
+    _localName = name;
+    _localSlide = 0;
+    _localStep = 0;
+    if (!quiet && parsed.slides.every((s) => s.notes.trim().isEmpty)) {
+      _nudge('Esta presentación no tiene notas del presentador');
+    }
+  }
+
+  /// Modos Bluetooth y WiFi: elegir el .pptx solo para ver las notas.
   Future<void> pickNotes() async {
-    final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pptx']);
+    final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: _mobileNotesExtensions);
     if (picked == null) return;
     deckLoading = true;
     notifyListeners();
     try {
-      final bytes = await picked.readAsBytes();
-      final slides = await PptxNotes.parse(bytes);
-      if (slides.isEmpty) throw const FormatException('La presentación no tiene diapositivas.');
-      await (await _notesStore()).writeAsBytes(bytes, flush: true);
-      await _prefs.setString('notes_name', picked.name);
-      deck = slides;
-      deckName = picked.name;
-      slide = 0;
-      step = 0;
-      if (slides.every((s) => s.notes.trim().isEmpty)) {
-        _nudge('Esta presentación no tiene notas del presentador');
-      }
+      await _loadNotes(await picked.readAsBytes(), picked.name, quiet: false);
     } on FormatException catch (e) {
       _nudge(e.message);
     } catch (_) {
-      _nudge('No se pudo leer el archivo. ¿Es un .pptx?');
+      _nudge('No se pudo leer el archivo. ¿Es un .pptx u .odp?');
     } finally {
       deckLoading = false;
       notifyListeners();
@@ -456,8 +592,9 @@ class RemoteController extends ChangeNotifier {
   }
 
   Future<void> clearNotes() async {
-    deck = null;
-    deckName = null;
+    _localDeck = null;
+    _localName = null;
+    _localTotal = 0;
     await _prefs.remove('notes_name');
     try {
       await (await _notesStore()).delete();
@@ -474,8 +611,78 @@ class RemoteController extends ChangeNotifier {
 
   @override
   void notifyListeners() {
-    if (deck != null && _ready) _prefs.setInt('notes_slide', slide);
+    if (_localDeck != null && _ready) _prefs.setInt('notes_slide', _localSlide);
     super.notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- notas desde la PC
+
+  /// La PC dice qué versión de notas tiene (llega con cada respuesta al ping, cada ~2 s).
+  void _onPcNotes(int version, int port) {
+    final host = wifi.targetAddress;
+    if (host == null) return;
+    if (_pcFor != null && _pcFor != host.address) _dropPcNotes();
+    if (version == 0) {
+      if (_pcDeck != null) {
+        _dropPcNotes();
+        notifyListeners();
+      }
+      return;
+    }
+    if (version == _pcVersion || _pcFetching) return;
+    _fetchPcNotes(host, port, version);
+  }
+
+  Future<void> _fetchPcNotes(InternetAddress host, int port, int version) async {
+    _pcFetching = true;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+    try {
+      final req = await client.getUrl(Uri(scheme: 'http', host: host.address, port: port, path: '/notes'));
+      final res = await req.close().timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
+      final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
+      final j = Map<String, Object?>.from(jsonDecode(body) as Map);
+      final v = (j['version'] as num?)?.toInt() ?? 0;
+      // La PC cambió de opinión mientras se descargaba, o la dirección ya no es la elegida
+      if (wifi.targetAddress?.address != host.address) return;
+      if (v == 0) {
+        _dropPcNotes();
+        return;
+      }
+      final parsed = PptxDeck.fromJson(j);
+      if (parsed.slides.isEmpty) return;
+      final sameFile = _pcName == j['name'] && _pcDeck?.length == parsed.slides.length;
+      _pcDeck = parsed.slides;
+      _pcTotal = parsed.total;
+      _pcName = (j['name'] as String?) ?? 'presentación';
+      _pcVersion = v;
+      _pcFor = host.address;
+      if (sameFile) {
+        // Solo se guardaron cambios en el archivo: conservar la posición
+        _pcSlide = _pcSlide.clamp(0, parsed.slides.length - 1);
+        _pcStep = 0;
+      } else {
+        _pcSlide = 0;
+        _pcStep = 0;
+        if (mode == Mode.wifi) _nudge('Notas de la PC: $_pcName');
+      }
+    } catch (e) {
+      debugPrint('Notas de la PC: $e');
+    } finally {
+      client.close(force: true);
+      _pcFetching = false;
+      notifyListeners();
+    }
+  }
+
+  void _dropPcNotes() {
+    _pcDeck = null;
+    _pcName = null;
+    _pcTotal = 0;
+    _pcSlide = 0;
+    _pcStep = 0;
+    _pcVersion = -1;
+    _pcFor = null;
   }
 
   // ================================================================ estado visible
@@ -502,7 +709,8 @@ class RemoteController extends ChangeNotifier {
         return ConnView(Conn.busy, 'Buscando…', pc.name);
       case Mode.browser:
         if (browser.error != null) return ConnView(Conn.error, 'Error', browser.error);
-        if (!browser.hasPdf) return const ConnView(Conn.off, 'Sin PDF', 'Elige tu presentación');
+        if (converting) return const ConnView(Conn.busy, 'Convirtiendo…', 'Se hace en el teléfono');
+        if (!browser.hasPdf) return const ConnView(Conn.off, 'Sin presentación', 'Elige tu presentación');
         if (browser.viewers > 0) {
           return ConnView(Conn.on, 'Proyectando',
               browser.total > 0 ? 'Diapositiva ${browser.page} de ${browser.total}' : 'Cargando PDF…');

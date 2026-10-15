@@ -188,6 +188,30 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
             case "requestBtPermissions":
                 requestPermissions(result);
                 return;
+            case "converterAvailable":
+                result.success(PptxConverter.isAvailable());
+                return;
+            case "converterStatus": {
+                Map<String, Object> st = new HashMap<>();
+                st.put("available", PptxConverter.isAvailable());
+                st.put("reason", PptxConverter.unavailableReason());
+                result.success(st);
+                return;
+            }
+            case "convertToPdf": {
+                String in = call.argument("input");
+                String out = call.argument("output");
+                if (activity == null || in == null || out == null) {
+                    result.error("BAD_ARGS", "Faltan datos para convertir", null);
+                    return;
+                }
+                PptxConverter.convert(activity, new java.io.File(in), new java.io.File(out),
+                        error -> main.post(() -> {
+                            if (error == null) result.success(null);
+                            else result.error("CONVERT_FAILED", error, null);
+                        }));
+                return;
+            }
             case "makeDiscoverable":
                 if (activity == null) { result.success(false); return; }
                 Intent i = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
