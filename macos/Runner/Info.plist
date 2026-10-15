@@ -12,6 +12,11 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>es</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
@@ -23,7 +28,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Slide Remote usa Bluetooth para cambiar las diapositivas de tu presentación.</string>
+	<string>Slide Remote uses Bluetooth to change your presentation slides. / Slide Remote usa Bluetooth para cambiar las diapositivas de tu presentación.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_slideremote._udp</string>
@@ -31,7 +36,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Slide Remote usa la red local para encontrar tu computadora y proyectar tu presentación.</string>
+	<string>Slide Remote uses the local network to find your computer and show your presentation. / Slide Remote usa la red local para encontrar tu computadora y proyectar tu presentación.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

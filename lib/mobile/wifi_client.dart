@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/foundation.dart';
 
+import '../common/i18n.dart';
 import '../common/protocol.dart';
 
 @immutable
@@ -129,7 +130,7 @@ class WifiClient extends ChangeNotifier {
       });
       _socket = s;
     } catch (e) {
-      error = 'No se pudo abrir el socket UDP: $e';
+      error = '${t('No se pudo abrir el socket UDP', 'Could not open the UDP socket')}: $e';
     }
   }
 

@@ -100,7 +100,7 @@ final class BtHidKeyboard {
 
     /** Activa el teclado. Si autoConnect no es null intenta conectarse a esa PC. */
     void start(BluetoothDevice autoConnect) {
-        if (adapter == null) { emit(State.UNAVAILABLE, null, "Este teléfono no tiene Bluetooth"); return; }
+        if (adapter == null) { emit(State.UNAVAILABLE, null, Lang.t("Este teléfono no tiene Bluetooth", "This phone has no Bluetooth")); return; }
         if (!adapter.isEnabled()) { emit(State.OFF, null, null); return; }
         active = true;
         if (autoConnect != null) { target = autoConnect; retriesLeft = MAX_RETRIES; }
@@ -109,7 +109,7 @@ final class BtHidKeyboard {
                 proxyRequested = true;
                 if (!adapter.getProfileProxy(ctx, serviceListener, BluetoothProfile.HID_DEVICE)) {
                     proxyRequested = false;
-                    emit(State.UNAVAILABLE, null, "Este teléfono no soporta el modo teclado Bluetooth");
+                    emit(State.UNAVAILABLE, null, Lang.t("Este teléfono no soporta el modo teclado Bluetooth", "This phone does not support Bluetooth keyboard mode"));
                 }
             }
         } else if (!registered) {
@@ -195,10 +195,10 @@ final class BtHidKeyboard {
 
     private void register(BluetoothHidDevice h) {
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
-                "Slide Remote", "Control de diapositivas", "l-gonzo",
+                "Slide Remote", "Slide remote control", "l-gonzo",
                 BluetoothHidDevice.SUBCLASS1_KEYBOARD, DESCRIPTOR);
         if (!h.registerApp(sdp, null, null, executor, hidCallback)) {
-            emit(State.IDLE, null, "No se pudo activar el teclado Bluetooth");
+            emit(State.IDLE, null, Lang.t("No se pudo activar el teclado Bluetooth", "Could not start the Bluetooth keyboard"));
         }
     }
 
@@ -216,7 +216,7 @@ final class BtHidKeyboard {
             emit(State.CONNECTING, d, null);
             main.postDelayed(this::connectTarget, RETRY_DELAY_MS);
         } else {
-            emit(State.IDLE, d, "No se pudo conectar. ¿La PC está encendida y con Bluetooth?");
+            emit(State.IDLE, d, Lang.t("No se pudo conectar. ¿La PC está encendida y con Bluetooth?", "Could not connect. Is the computer on, with Bluetooth enabled?"));
         }
     }
 
@@ -234,7 +234,7 @@ final class BtHidKeyboard {
             proxyRequested = false;
             registered = false;
             host = null;
-            emit(State.IDLE, null, "Servicio Bluetooth detenido");
+            emit(State.IDLE, null, Lang.t("Servicio Bluetooth detenido", "Bluetooth service stopped"));
         }
     };
 

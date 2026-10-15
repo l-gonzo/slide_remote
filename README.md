@@ -36,10 +36,12 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Volumen + / Volumen −** = siguiente / anterior (se puede invertir). También hay botones grandes en pantalla.
 - **Tres modos:** Bluetooth, WiFi y Navegador (ver abajo). Al salir de la app suelta el volumen y la conexión; al volver se **reconecta sola**.
 - **Notas del presentador** en el teléfono, con título de la diapositiva, aviso de animaciones y “Sigue: …”. Botón para **expandir las notas** a casi toda la pantalla (los botones de cambiar diapositiva se hacen compactos).
+- **Dibujar sobre la diapositiva (modo Navegador):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
 - **Por WiFi, las notas llegan desde la PC:** la presentación solo tiene que estar en la computadora.
 - **Modo Navegador:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
 - Lee notas de **PowerPoint, LibreOffice, OnlyOffice, WPS, Google Slides exportado** (`.pptx`, `.odp` y variantes).
 - La pantalla del teléfono no se apaga mientras la app está abierta.
+- **Español e inglés:** usa el idioma del sistema (si no es español, inglés). Se cambia en **Ajustes → Idioma** del teléfono o con el botón de idioma (🌐) de la app de escritorio. La página del modo Navegador usa el idioma de la app del teléfono.
 
 ## Modos de conexión
 
@@ -67,7 +69,7 @@ En una tablet (Android o iPad) no se puede instalar el receptor: los sistemas no
 1. Abre la app en el teléfono y elige el modo.
 2. **Bluetooth Android:** “Emparejar nueva” → en la PC, Configuración → Bluetooth → agregar dispositivo → elige el teléfono. Las siguientes veces solo “Conectar” (o se conecta sola al abrir la app).
 3. **Bluetooth iPhone / WiFi:** abre la app de escritorio en la PC (puede quedar minimizada), pon tu presentación al frente y en el teléfono elige tu PC.
-4. **Navegador:** “Elegir presentación” → abre en la PC la dirección que aparece → “Pantalla completa”.
+4. **Navegador:** “Elegir presentación” → abre en la PC la dirección que aparece → “Pantalla completa”. Para dibujar o señalar: **Dibujar sobre la diapositiva**.
 5. **Ajustes** (icono arriba a la derecha): invertir botones, usar flechas ← → en vez de AvPág/RePág, tamaño de letra de las notas.
 
 ## Notas del presentador
@@ -338,6 +340,15 @@ Sin cuenta de desarrollador de Apple la app va firmada “ad hoc”: la primera 
 
   Para TestFlight/App Store sube el `.ipa` con la app **Transporter** o desde Xcode (*Window → Organizer → Distribute App*).
 
+### Publicar en GitHub los instaladores que ya compilaste
+
+```bash
+python3 tool/release.py --dry-run   # muestra qué encontró (en dist/ y build/)
+python3 tool/release.py             # crea el release v<versión> y sube los que haya
+```
+
+Sube los que encuentre (APK, `.deb`, `.tar.gz`, `.exe`, `.zip`, `.dmg`, `.ipa`) más un `SHA256SUMS.txt`. Si el release ya existe, agrega o reemplaza archivos, así puedes correrlo en cada computadora (Linux, luego Windows, luego Mac) y se van juntando. Opciones: `--tag v2.0.1`, `--draft`, `--prerelease`, `--notes "…"`.
+
 ## Compilar en GitHub (todos los sistemas a la vez)
 
 El proyecto trae `.github/workflows/build.yml`: GitHub compila en sus servidores con Linux, Windows y Mac, así no necesitas tener las tres computadoras.
@@ -445,11 +456,14 @@ lib/
   main.dart                       control remoto (teléfono) o receptor (PC)
   common/protocol.dart            puertos, UUIDs BLE, comandos
   common/theme.dart               colores y componentes de la interfaz
+  common/i18n.dart                idioma (español/inglés): t('Texto', 'Text')
   common/pptx_notes.dart          lee notas, títulos y animaciones de .pptx y .odp
   mobile/remote_page.dart         pantalla del teléfono
   mobile/remote_controller.dart   modos, reconexión, notas (del teléfono o de la PC)
   mobile/wifi_client.dart         descubrimiento mDNS + UDP
   mobile/browser_server.dart      servidor web + WebSocket del modo Navegador
+  mobile/draw_page.dart           vista de dibujo (diapositiva en el teléfono)
+  mobile/ink.dart                 trazos y puntero láser, enviados al navegador
   mobile/native_bridge.dart       canal hacia el código nativo
   desktop/receiver_page.dart      ventana de la PC
   desktop/receiver_controller.dart  UDP + mDNS + Bluetooth LE
@@ -459,6 +473,7 @@ packages/slide_native/            plugin propio
   android/…/BtHidKeyboard.java    teclado Bluetooth HID
   android/…/SlideNativePlugin.java  volumen, permisos
   android/…/PptxConverter.java    presentación → PDF con LibreOfficeKit
+  android/…/PdfPageRenderer.java  página del PDF como imagen (vista de dibujo)
   android/…/org/libreoffice/kit/  clases JNI de LibreOffice (MPL 2.0)
   ios/Classes/SlideNativePlugin.swift      BLE periférico, volumen
   ios/Classes/PresentationConverter.swift  presentación → PDF con WebKit
@@ -470,6 +485,7 @@ tool/build.py                     compila y crea instaladores (igual en los 3 si
 tool/configure.py                 prepara las plataformas
 tool/build_libreoffice_android.sh compila LibreOffice para el convertidor de Android (Linux)
 tool/libreoffice_android.py       sube/descarga ese convertidor (release de GitHub)
+tool/release.py                   sube los instaladores ya compilados a un release de GitHub
 tool/package_linux.sh             crea .deb y .tar.gz
 tool/package_windows.ps1          crea instalador .exe y .zip
 tool/windows/slide_remote.iss     receta del instalador (Inno Setup)

@@ -1,6 +1,8 @@
 /// Constantes compartidas entre la app del teléfono y la de escritorio.
 library;
 
+import 'i18n.dart';
+
 /// Puerto UDP donde escucha la app de escritorio.
 const int kUdpPort = 50505;
 
@@ -35,8 +37,8 @@ abstract final class Cmd {
   static bool isValid(int cmd) => cmd >= next && cmd <= left;
 
   static String label(int cmd) => switch (cmd) {
-        Cmd.next => 'AvPág',
-        Cmd.prev => 'RePág',
+        Cmd.next => t('AvPág', 'Page Down'),
+        Cmd.prev => t('RePág', 'Page Up'),
         Cmd.right => '→',
         Cmd.left => '←',
         _ => '?',

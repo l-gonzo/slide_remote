@@ -33,8 +33,13 @@ PLATFORMS = "android,ios,macos,windows,linux"
 APP_NAME = "Slide Remote"
 BONJOUR = ["_slideremote._udp"]
 
-BT_TEXT = "Slide Remote usa Bluetooth para cambiar las diapositivas de tu presentación."
-LAN_TEXT = "Slide Remote usa la red local para encontrar tu computadora y proyectar tu presentación."
+# iOS solo muestra un texto por permiso (sin archivos .lproj en el proyecto): va en los dos idiomas.
+BT_TEXT = ("Slide Remote uses Bluetooth to change your presentation slides. / "
+           "Slide Remote usa Bluetooth para cambiar las diapositivas de tu presentación.")
+LAN_TEXT = ("Slide Remote uses the local network to find your computer and show your presentation. / "
+            "Slide Remote usa la red local para encontrar tu computadora y proyectar tu presentación.")
+# Idiomas de la app (para que iOS/macOS muestren sus diálogos del sistema en el idioma correcto)
+LOCALIZATIONS = ["en", "es"]
 
 
 def log(msg):
@@ -127,6 +132,12 @@ def main():
 
     def gradle_signing(s):
         # Firma propia si existe android/key.properties (ver README); si no, la de depuración.
+        # Versión anterior: "java.util.Properties()" dentro de android { } no compila (ahí `java`
+        # es otra cosa). Se cambia por Properties() con import arriba.
+        if "java.util.Properties()" in s:
+            s = s.replace("java.util.Properties()", "Properties()")
+        if "Properties()" in s and "import java.util.Properties" not in s:
+            s = "import java.util.Properties\n\n" + s
         if "key.properties" in s or "    buildTypes {" not in s:
             return s
         block = (
@@ -134,7 +145,7 @@ def main():
             "        create(\"release\") {\n"
             "            val f = rootProject.file(\"key.properties\")\n"
             "            if (f.exists()) {\n"
-            "                val p = java.util.Properties().apply { f.inputStream().use { load(it) } }\n"
+            "                val p = Properties().apply { f.inputStream().use { load(it) } }\n"
             "                keyAlias = p.getProperty(\"keyAlias\")\n"
             "                keyPassword = p.getProperty(\"keyPassword\")\n"
             "                storeFile = file(p.getProperty(\"storeFile\"))\n"
@@ -145,6 +156,8 @@ def main():
             "    buildTypes {"
         )
         s = s.replace("    buildTypes {", block, 1)
+        if "import java.util.Properties" not in s:
+            s = "import java.util.Properties\n\n" + s
         s = s.replace(
             'signingConfig = signingConfigs.getByName("debug")',
             'signingConfig = signingConfigs.getByName(\n'
@@ -159,6 +172,7 @@ def main():
 
     def ios_plist(d):
         d["CFBundleDisplayName"] = APP_NAME
+        d["CFBundleLocalizations"] = LOCALIZATIONS
         d["NSBluetoothAlwaysUsageDescription"] = BT_TEXT
         d["NSBluetoothPeripheralUsageDescription"] = BT_TEXT
         d["NSLocalNetworkUsageDescription"] = LAN_TEXT
@@ -176,6 +190,7 @@ def main():
     log("macOS: Bluetooth, red local, sin sandbox (necesario para presionar teclas)")
 
     def mac_plist(d):
+        d["CFBundleLocalizations"] = LOCALIZATIONS
         d["NSBluetoothAlwaysUsageDescription"] = BT_TEXT
         d["NSLocalNetworkUsageDescription"] = LAN_TEXT
         d["NSBonjourServices"] = BONJOUR

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../common/i18n.dart';
 import '../common/protocol.dart';
 
 /// Simula pulsaciones de teclado en la PC, sin dependencias externas (dart:ffi).
@@ -54,7 +55,7 @@ class _WindowsInjector implements KeyInjector {
       _loaded = true;
       _problem = null;
     } catch (e) {
-      _problem = 'No se pudo cargar user32.dll: $e';
+      _problem = '${t('No se pudo cargar', 'Could not load')} user32.dll: $e';
     }
   }
 
@@ -116,7 +117,7 @@ class _MacInjector implements KeyInjector {
       _isTrusted = ax.lookupFunction<Uint8 Function(), int Function()>('AXIsProcessTrusted');
       _loaded = true;
     } catch (e) {
-      _loadError = 'No se pudo cargar CoreGraphics: $e';
+      _loadError = '${t('No se pudo cargar', 'Could not load')} CoreGraphics: $e';
     }
   }
 
@@ -126,8 +127,10 @@ class _MacInjector implements KeyInjector {
   String? get problem {
     if (_loadError != null) return _loadError;
     if (!trusted) {
-      return 'macOS necesita permiso de Accesibilidad para presionar teclas. '
-          'Actívalo para Slide Remote y vuelve a abrir la app.';
+      return t('macOS necesita permiso de Accesibilidad para presionar teclas. '
+          'Actívalo para Slide Remote y vuelve a abrir la app.',
+          'macOS needs the Accessibility permission to press keys. '
+          'Turn it on for Slide Remote and reopen the app.');
     }
     return null;
   }
@@ -212,8 +215,10 @@ class _LinuxInjector implements KeyInjector {
     try {
       final fd = _open(path, _oWronly | _oNonblock);
       if (fd < 0) {
-        _problem = 'Sin permiso para /dev/uinput, así que no se pueden presionar teclas. '
-            'Ejecuta este comando una vez y cierra/abre sesión:';
+        _problem = t('Sin permiso para /dev/uinput, así que no se pueden presionar teclas. '
+            'Ejecuta este comando una vez y cierra/abre sesión:',
+            'No permission for /dev/uinput, so keys can’t be pressed. '
+            'Run this command once and log out and back in:');
         return;
       }
       _ioctl1(fd, _uiSetEvBit, _evKey);
@@ -235,7 +240,7 @@ class _LinuxInjector implements KeyInjector {
         bd.setUint16(86, 1, Endian.little);
         if (_write(fd, dev, size) != size) {
           _close(fd);
-          _problem = 'No se pudo crear el teclado virtual (uinput).';
+          _problem = t('No se pudo crear el teclado virtual (uinput).', 'Could not create the virtual keyboard (uinput).');
           return;
         }
       } finally {
@@ -243,7 +248,7 @@ class _LinuxInjector implements KeyInjector {
       }
       if (_ioctl0(fd, _uiDevCreate) < 0) {
         _close(fd);
-        _problem = 'No se pudo crear el teclado virtual (uinput).';
+        _problem = t('No se pudo crear el teclado virtual (uinput).', 'Could not create the virtual keyboard (uinput).');
         return;
       }
       _fd = fd;

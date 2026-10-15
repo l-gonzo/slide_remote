@@ -13,6 +13,8 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; overflow: hidden; }
   #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
   canvas { display: block; }
+  #wrap { position: relative; }
+  #ink { position: absolute; left: 0; top: 0; pointer-events: none; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
     justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0e0f12; }
   #empty.show { display: flex; }
@@ -35,7 +37,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="c"></canvas></div>
+<div id="stage"><div id="wrap"><canvas id="c"></canvas><canvas id="ink"></canvas></div></div>
 <div id="empty" class="show">
   <div class="mark">▶</div>
   <h1>Slide Remote</h1>
@@ -59,6 +61,33 @@
   const pg = document.getElementById('pg');
   const empty = document.getElementById('empty');
   const emptyMsg = document.getElementById('emptyMsg');
+  const fsBtn = document.getElementById('fs');
+  const inkCanvas = document.getElementById('ink');
+  const inkCtx = inkCanvas.getContext('2d');
+
+  // ------------------------------------------------------------ idioma (el de la app del teléfono)
+  const TXT = {
+    es: {
+      connecting: 'Conectando…', connectingPhone: 'Conectando con el teléfono…',
+      pickPdf: 'Elige una presentación en la app del teléfono.', cantOpen: 'No se pudo abrir el PDF.',
+      connected: 'Teléfono conectado', reconnecting: 'Reconectando con el teléfono…', fullscreen: 'Pantalla completa',
+    },
+    en: {
+      connecting: 'Connecting…', connectingPhone: 'Connecting to the phone…',
+      pickPdf: 'Choose a presentation in the phone app.', cantOpen: 'Could not open the PDF.',
+      connected: 'Phone connected', reconnecting: 'Reconnecting to the phone…', fullscreen: 'Full screen',
+    },
+  };
+  let lang = document.documentElement.lang === 'es' ? 'es' : 'en';
+  let hudKey = 'connecting', emptyKey = 'connectingPhone';
+  const T = (k) => (TXT[lang] || TXT.en)[k] || k;
+  function applyLang() {
+    document.documentElement.lang = lang;
+    st.textContent = T(hudKey);
+    emptyMsg.textContent = T(emptyKey);
+    fsBtn.textContent = T('fullscreen');
+  }
+  applyLang();
 
   let doc = null, page = 1, total = 0, ws = null, loading = false;
   let shown = 0, rendering = false;
@@ -72,7 +101,7 @@
       const r = await fetch('/deck.pdf', { cache: 'no-store' });
       if (!r.ok) {
         doc = null; total = 0; cache.clear();
-        showEmpty('Elige un PDF en la app del teléfono.');
+        showEmpty('pickPdf');
         report();
         return;
       }
@@ -85,14 +114,15 @@
       await show();
     } catch (e) {
       console.error(e);
-      showEmpty('No se pudo abrir el PDF.');
+      showEmpty('cantOpen');
     } finally {
       loading = false;
     }
   }
 
-  function showEmpty(msg) {
-    emptyMsg.textContent = msg;
+  function showEmpty(key) {
+    emptyKey = key;
+    emptyMsg.textContent = T(key);
     empty.classList.add('show');
     pg.textContent = '';
   }
@@ -133,7 +163,12 @@
         canvas.style.width = (off.width / dpr) + 'px';
         canvas.style.height = (off.height / dpr) + 'px';
         ctx.drawImage(off, 0, 0);
+        inkCanvas.width = off.width;
+        inkCanvas.height = off.height;
+        inkCanvas.style.width = canvas.style.width;
+        inkCanvas.style.height = canvas.style.height;
         shown = target;
+        drawInk();
         pg.textContent = `${page} / ${total}`;
         report();
       }
@@ -153,9 +188,10 @@
   }
 
   // ------------------------------------------------------------ teléfono
-  function setHud(state, text) {
+  function setHud(state, key) {
     hud.className = state;
-    st.textContent = text;
+    hudKey = key;
+    st.textContent = T(key);
   }
 
   function report() {
@@ -166,21 +202,94 @@
 
   function connect() {
     ws = new WebSocket(`ws://${location.host}/ws`);
-    ws.onopen = () => { setHud('on', 'Teléfono conectado'); report(); };
+    ws.onopen = () => { setHud('on', 'connected'); report(); };
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.t === 'go') go(msg.d);
       else if (msg.t === 'reload') { page = 1; load(); }
+      else if (msg.t === 'ink') onInk(msg);
+      else if (msg.t === 'inkAll') {
+        inkPages.clear();
+        for (const [k, v] of Object.entries(msg.pages || {})) inkPages.set(Number(k), v);
+        drawInk();
+      }
+      else if (msg.t === 'laser') { laser = msg.off ? null : { page: msg.page, x: msg.x, y: msg.y }; drawInk(); }
+      else if (msg.t === 'lang') { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
       else if (msg.t === 'hello') {
+        if (msg.lang && msg.lang !== lang) { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
         if (msg.hasPdf && !doc) load();
-        else if (!msg.hasPdf) showEmpty('Elige un PDF en la app del teléfono.');
+        else if (!msg.hasPdf) showEmpty('pickPdf');
       }
     };
     ws.onclose = () => {
-      setHud('busy', 'Reconectando con el teléfono…');
+      setHud('busy', 'reconnecting');
       setTimeout(connect, 1500);
     };
+  }
+
+  // ------------------------------------------------------------ dibujos desde el teléfono
+  // Coordenadas de 0 a 1 respecto a la página; grosor como fracción del ancho.
+  const inkPages = new Map(); // página -> [{id, tool, color, w, pts: [x, y, x, y, …]}]
+  let laser = null; // {page, x, y}
+  let inkQueued = false;
+
+  function drawInk() {
+    if (inkQueued) return;
+    inkQueued = true;
+    requestAnimationFrame(() => {
+      inkQueued = false;
+      const W = inkCanvas.width, H = inkCanvas.height;
+      inkCtx.clearRect(0, 0, W, H);
+      if (!doc || !W) return;
+      for (const s of inkPages.get(shown) || []) strokeOn(s, W, H);
+      if (laser && laser.page === shown) {
+        const x = laser.x * W, y = laser.y * H, r = W * 0.012 + 4;
+        inkCtx.save();
+        inkCtx.shadowColor = 'rgba(255,45,45,.9)';
+        inkCtx.shadowBlur = r * 2.5;
+        inkCtx.fillStyle = '#ff2d2d';
+        inkCtx.beginPath(); inkCtx.arc(x, y, r, 0, Math.PI * 2); inkCtx.fill();
+        inkCtx.restore();
+        inkCtx.fillStyle = '#ffd0d0';
+        inkCtx.beginPath(); inkCtx.arc(x, y, r * 0.45, 0, Math.PI * 2); inkCtx.fill();
+      }
+    });
+  }
+
+  function strokeOn(s, W, H) {
+    const p = s.pts;
+    if (!p || p.length < 2) return;
+    const hl = s.tool === 'hl';
+    inkCtx.save();
+    inkCtx.globalAlpha = hl ? 0.38 : 1;
+    inkCtx.strokeStyle = inkCtx.fillStyle = s.color;
+    inkCtx.lineWidth = Math.min(Math.max(s.w * W, 1.5), 80);
+    inkCtx.lineCap = hl ? 'square' : 'round';
+    inkCtx.lineJoin = 'round';
+    if (p.length === 2) {
+      inkCtx.beginPath(); inkCtx.arc(p[0] * W, p[1] * H, inkCtx.lineWidth / 2, 0, Math.PI * 2); inkCtx.fill();
+    } else {
+      inkCtx.beginPath();
+      inkCtx.moveTo(p[0] * W, p[1] * H);
+      for (let i = 2; i < p.length - 2; i += 2) {
+        const mx = (p[i] + p[i + 2]) / 2, my = (p[i + 1] + p[i + 3]) / 2;
+        inkCtx.quadraticCurveTo(p[i] * W, p[i + 1] * H, mx * W, my * H);
+      }
+      inkCtx.lineTo(p[p.length - 2] * W, p[p.length - 1] * H);
+      inkCtx.stroke();
+    }
+    inkCtx.restore();
+  }
+
+  function onInk(m) {
+    const list = inkPages.get(m.page) || [];
+    if (m.op === 'add') { list.push(m.s); inkPages.set(m.page, list); }
+    else if (m.op === 'pts') { const s = list.find((x) => x.id === m.id); if (s) s.pts.push(...m.pts); }
+    else if (m.op === 'undo') list.pop();
+    else if (m.op === 'clear') inkPages.delete(m.page);
+    else if (m.op === 'clearAll') inkPages.clear();
+    if (m.page === shown || m.op === 'clearAll') drawInk();
   }
 
   // ------------------------------------------------------------ teclado, clic, pantalla completa

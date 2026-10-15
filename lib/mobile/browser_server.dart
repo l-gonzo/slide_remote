@@ -1,16 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../common/i18n.dart';
 import '../common/protocol.dart';
+import 'ink.dart';
 
 /// Modo Navegador: el teléfono sirve una página web en la red local. La PC abre la URL en
 /// cualquier navegador (sin instalar nada) y ahí se proyecta el PDF, controlado por WebSocket.
 class BrowserServer extends ChangeNotifier {
+  /// Idioma de la página (el de la app): 'es' o 'en'.
+  String lang = 'en';
+
+  void setLanguage(String l) {
+    if (l == lang) return;
+    lang = l;
+    _broadcast({'t': 'lang', 'lang': l});
+  }
+
+  /// Dibujos sobre las diapositivas (vista de dibujo del teléfono).
+  late final InkBoard ink = InkBoard(_broadcast);
+
   HttpServer? _server;
   final Set<WebSocket> _clients = {};
   final Map<String, Uint8List> _assets = {};
@@ -41,7 +54,7 @@ class BrowserServer extends ChangeNotifier {
     }
     final server = _server;
     if (server == null) {
-      error = 'No se pudo abrir el servidor web';
+      error = t('No se pudo abrir el servidor web', 'Could not start the web server');
       notifyListeners();
       return;
     }
@@ -75,6 +88,7 @@ class BrowserServer extends ChangeNotifier {
     pdfName = name;
     page = 0;
     total = 0;
+    ink.clearAll();
     _broadcast({'t': 'reload'});
     notifyListeners();
   }
@@ -137,7 +151,11 @@ class BrowserServer extends ChangeNotifier {
   }
 
   Future<void> _sendAsset(HttpResponse res, String name, String type) async {
-    final bytes = _assets[name] ??= (await rootBundle.load('assets/web/$name')).buffer.asUint8List();
+    var bytes = _assets[name] ??= (await rootBundle.load('assets/web/$name')).buffer.asUint8List();
+    if (name == 'index.html') {
+      // La página toma el idioma de <html lang="…">
+      bytes = Uint8List.fromList(utf8.encode(utf8.decode(bytes).replaceFirst('<html lang="es">', '<html lang="$lang">')));
+    }
     res.headers
       ..set(HttpHeaders.contentTypeHeader, type)
       ..set(HttpHeaders.cacheControlHeader, name == 'index.html' ? 'no-store' : 'max-age=3600')
@@ -149,7 +167,8 @@ class BrowserServer extends ChangeNotifier {
   void _addClient(WebSocket ws) {
     _clients.add(ws);
     ws.pingInterval = const Duration(seconds: 5);
-    ws.add(jsonEncode({'t': 'hello', 'hasPdf': hasPdf, 'name': pdfName}));
+    ws.add(jsonEncode({'t': 'hello', 'hasPdf': hasPdf, 'name': pdfName, 'lang': lang}));
+    ws.add(jsonEncode(ink.snapshot()));
     ws.listen(
       (data) {
         if (data is! String) return;

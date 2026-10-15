@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 
@@ -13,7 +14,7 @@ import '../common/protocol.dart';
 const kDesktopNotesExtensions = [...kNotesExtensions, 'ppt', 'pps', 'pot', 'key', 'dps'];
 
 /// App de escritorio: lee las notas del .pptx que está en la PC y se las sirve al teléfono
-/// por WiFi (GET http://<pc>:<puerto>/notes). Así el archivo no tiene que estar en el teléfono.
+/// por WiFi (`GET http://<pc>:<puerto>/notes`). Así el archivo no tiene que estar en el teléfono.
 class NotesHost extends ChangeNotifier {
   NotesHost({required this.isAllowed});
 
@@ -61,7 +62,7 @@ class NotesHost extends ChangeNotifier {
       try {
         s = await HttpServer.bind(InternetAddress.anyIPv4, 0);
       } catch (e) {
-        error = 'No se pudo abrir el servidor de notas: $e';
+        error = '${t('No se pudo abrir el servidor de notas', 'Could not start the notes server')}: $e';
         notifyListeners();
         return;
       }
@@ -108,7 +109,7 @@ class NotesHost extends ChangeNotifier {
       final parsed = kNotesExtensions.contains(ext)
           ? await PptxNotes.parse(await f.readAsBytes())
           : await _parseWithLibreOffice(f, ext);
-      if (parsed.slides.isEmpty) throw const FormatException('La presentación no tiene diapositivas.');
+      if (parsed.slides.isEmpty) throw FormatException(t('La presentación no tiene diapositivas.', 'The presentation has no slides.'));
       path = filePath;
       name = base;
       deck = parsed;
@@ -118,7 +119,7 @@ class NotesHost extends ChangeNotifier {
     } on FormatException catch (e) {
       if (!quiet) error = e.message;
     } catch (e) {
-      if (!quiet) error = 'No se pudo leer el archivo. ¿Es una presentación? ($e)';
+      if (!quiet) error = '${t('No se pudo leer el archivo. ¿Es una presentación?', 'Could not read the file. Is it a presentation?')} ($e)';
     } finally {
       loading = false;
       notifyListeners();
@@ -135,8 +136,9 @@ class NotesHost extends ChangeNotifier {
   static Future<PptxDeck> _parseWithLibreOffice(File f, String ext) async {
     final soffice = await _findSoffice();
     if (soffice == null) {
-      throw FormatException('Para leer .$ext instala LibreOffice en esta PC, '
-          'o guarda la presentación como .pptx u .odp.');
+      throw FormatException(t('Para leer .$ext instala LibreOffice en esta PC, '
+          'o guarda la presentación como .pptx u .odp.',
+          'To read .$ext install LibreOffice on this computer, or save the presentation as .pptx or .odp.'));
     }
     final tmp = await Directory.systemTemp.createTemp('slideremote');
     try {
@@ -158,7 +160,7 @@ class NotesHost extends ChangeNotifier {
           .where((x) => x.path.toLowerCase().endsWith('.odp'))
           .firstOrNull;
       if (out == null) {
-        throw FormatException('LibreOffice no pudo abrir el archivo .$ext (${'${r.stderr}'.trim()})');
+        throw FormatException('${t('LibreOffice no pudo abrir el archivo', 'LibreOffice could not open the file')} .$ext (${'${r.stderr}'.trim()})');
       }
       return await PptxNotes.parse(await out.readAsBytes());
     } finally {

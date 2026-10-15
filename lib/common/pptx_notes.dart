@@ -5,6 +5,12 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
+import 'i18n.dart';
+
+/// Idioma de los mensajes de error dentro del isolate (ahí no llega el estado de [I18n]).
+bool _es = false;
+String _t(String es, String en) => _es ? es : en;
+
 /// Una diapositiva tal como se ve en la presentación (las ocultas se omiten).
 class SlideInfo {
   const SlideInfo({required this.number, required this.title, required this.notes, required this.clicks});
@@ -68,7 +74,13 @@ const kNotesExtensions = [
 /// El formato se detecta por el contenido, no por la extensión.
 abstract final class PptxNotes {
   /// Se ejecuta en otro isolate para no trabar la interfaz con archivos grandes.
-  static Future<PptxDeck> parse(Uint8List bytes) => Isolate.run(() => parseSync(bytes));
+  static Future<PptxDeck> parse(Uint8List bytes) {
+    final es = I18n.es;
+    return Isolate.run(() {
+      _es = es;
+      return parseSync(bytes);
+    });
+  }
 
   static PptxDeck parseSync(Uint8List bytes) {
     // OpenDocument plano (.fodp): XML sin comprimir
@@ -81,8 +93,9 @@ abstract final class PptxNotes {
       return OdpNotes.parseDocs(XmlDocument.parse(_utf8(bytes)), null);
     }
     if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
-      throw const FormatException(
-          'Este formato no se puede leer directo. Guárdala como .pptx u .odp (PowerPoint o LibreOffice).');
+      throw FormatException(_t(
+          'Este formato no se puede leer directo. Guárdala como .pptx u .odp (PowerPoint o LibreOffice).',
+          'This format can’t be read directly. Save it as .pptx or .odp (PowerPoint or LibreOffice).'));
     }
     final zip = ZipDecoder().decodeBytes(bytes);
     if (zip.findFile('ppt/presentation.xml') == null && zip.findFile('content.xml') != null) {
@@ -103,7 +116,7 @@ abstract final class PptxNotes {
 
     final presentation = doc('ppt/presentation.xml');
     if (presentation == null) {
-      throw const FormatException('El archivo no parece una presentación (.pptx u .odp).');
+      throw FormatException(_t('El archivo no parece una presentación (.pptx u .odp).', 'The file doesn’t look like a presentation (.pptx or .odp).'));
     }
     final presRels = _rels(doc('ppt/_rels/presentation.xml.rels'));
 
@@ -205,7 +218,7 @@ abstract final class PptxNotes {
   // ------------------------------------------------------------------ animaciones
 
   /// Cuenta los pasos "al hacer clic" de la secuencia principal de animaciones.
-  /// Estructura: <p:cTn nodeType="mainSeq"><p:childTnLst><p:par>…</p:par>… — cada <p:par>
+  /// Estructura: `<p:cTn nodeType="mainSeq"><p:childTnLst><p:par>…</p:par>…` — cada `<p:par>`
   /// hijo es un paso; es un clic si su primer efecto tiene nodeType="clickEffect".
   static int _clickCount(XmlDocument slide) {
     for (final ctn in slide.descendantElements) {
@@ -302,7 +315,7 @@ abstract final class OdpNotes {
 
   static PptxDeck parseZip(Archive zip) {
     final content = _doc(zip, 'content.xml');
-    if (content == null) throw const FormatException('El archivo .odp está dañado (falta content.xml).');
+    if (content == null) throw FormatException(_t('El archivo .odp está dañado (falta content.xml).', 'The .odp file is damaged (content.xml is missing).'));
     return parseDocs(content, _doc(zip, 'styles.xml'));
   }
 
@@ -310,7 +323,7 @@ abstract final class OdpNotes {
   static PptxDeck parseDocs(XmlDocument content, XmlDocument? styles) {
     final pres = content.descendantElements.where((e) => e.name.local == 'presentation' &&
         e.parentElement?.name.local == 'body').firstOrNull;
-    if (pres == null) throw const FormatException('El archivo no parece una presentación (.odp).');
+    if (pres == null) throw FormatException(_t('El archivo no parece una presentación (.odp).', 'The file doesn’t look like a presentation (.odp).'));
 
     // Estilos de página ocultos (pueden estar en content.xml o en styles.xml)
     final hiddenStyles = <String>{};

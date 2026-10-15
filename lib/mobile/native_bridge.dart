@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../common/i18n.dart';
+
 /// Acceso al plugin nativo (packages/slide_native).
 abstract final class NativeBridge {
   static const _methods = MethodChannel('slide_native');
@@ -29,6 +31,9 @@ abstract final class NativeBridge {
   }
 
   static Future<void> setVolumeCapture(bool on) => call('setVolumeCapture', {'enabled': on});
+
+  /// Idioma de los mensajes que genera la parte nativa ('es' o 'en').
+  static Future<void> setLanguage(String lang) => call('setLanguage', {'lang': lang});
 
   // ---------------------------------------------------------------- Android: teclado HID
 
@@ -68,7 +73,8 @@ abstract final class NativeBridge {
       final m = await _methods.invokeMethod<Map<Object?, Object?>>('converterStatus');
       return ((m?['available'] as bool?) ?? false, m?['reason'] as String?);
     } on MissingPluginException {
-      return (false, 'la parte nativa de la app no tiene el convertidor (recompila con flutter clean)');
+      return (false, t('la parte nativa de la app no tiene el convertidor (recompila con flutter clean)',
+          'the native part of the app has no converter (rebuild with flutter clean)'));
     } on PlatformException catch (e) {
       return (false, e.message ?? e.code);
     }
@@ -89,11 +95,43 @@ abstract final class NativeBridge {
         'expected': expected,
       });
 
+  // ---------------------------------------------------------------- vista de dibujo
+
+  /// Una página del PDF como imagen JPEG ([page] empieza en 1; [width] en píxeles).
+  static Future<PdfPageImage?> renderPdfPage(String path, int page, int width) async {
+    try {
+      final m = await _methods.invokeMethod<Map<Object?, Object?>>(
+          'renderPdfPage', {'path': path, 'page': page, 'width': width});
+      final bytes = m?['bytes'];
+      if (bytes is! Uint8List) return null;
+      return PdfPageImage(
+        bytes: bytes,
+        width: (m!['width'] as num).toInt(),
+        height: (m['height'] as num).toInt(),
+        pages: (m['pages'] as num?)?.toInt() ?? 0,
+      );
+    } on MissingPluginException {
+      return null;
+    } on PlatformException catch (e) {
+      debugPrint('renderPdfPage: ${e.message}');
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------- iOS: BLE periférico
 
   static Future<void> bleStart() => call('bleStart');
   static Future<void> bleStop() => call('bleStop');
   static Future<bool> bleSend(int cmd) async => await call<bool>('bleSend', {'cmd': cmd}) ?? false;
+}
+
+@immutable
+class PdfPageImage {
+  const PdfPageImage({required this.bytes, required this.width, required this.height, required this.pages});
+  final Uint8List bytes;
+  final int width;
+  final int height;
+  final int pages;
 }
 
 @immutable

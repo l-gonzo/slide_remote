@@ -15,10 +15,10 @@ final class PresentationConverter: NSObject, WKNavigationDelegate {
         case load(String), notFound, pdf(String), timeout
         var errorDescription: String? {
             switch self {
-            case .load(let m): return "iOS no pudo abrir la presentación (\(m))."
-            case .notFound: return "No se encontraron las diapositivas en la vista previa de iOS."
-            case .pdf(let m): return "No se pudo generar el PDF (\(m))."
-            case .timeout: return "La conversión tardó demasiado."
+            case .load(let m): return SlideLang.t("iOS no pudo abrir la presentación (\(m)).", "iOS could not open the presentation (\(m)).")
+            case .notFound: return SlideLang.t("No se encontraron las diapositivas en la vista previa de iOS.", "No slides were found in the iOS preview.")
+            case .pdf(let m): return SlideLang.t("No se pudo generar el PDF (\(m)).", "Could not create the PDF (\(m)).")
+            case .timeout: return SlideLang.t("La conversión tardó demasiado.", "The conversion took too long.")
             }
         }
     }
@@ -139,7 +139,7 @@ final class PresentationConverter: NSObject, WKNavigationDelegate {
         guard let wv = webView else { return }
         if index >= rects.count {
             guard let out = output, result.write(to: out) else {
-                finish(.failure(Failure.pdf("no se pudo guardar")))
+                finish(.failure(Failure.pdf(SlideLang.t("no se pudo guardar", "could not save"))))
                 return
             }
             finish(.success(result.pageCount))

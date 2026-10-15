@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
+import '../common/i18n.dart';
 import '../common/protocol.dart';
 import 'key_injector.dart';
 import 'notes_host.dart';
@@ -130,7 +130,8 @@ class ReceiverController extends ChangeNotifier {
       _udp = s;
       wifiListening = true;
     } on SocketException catch (e) {
-      wifiError = 'El puerto $kUdpPort está ocupado (¿hay otra copia abierta?): ${e.message}';
+      wifiError = t('El puerto $kUdpPort está ocupado (¿hay otra copia abierta?): ${e.message}',
+          'Port $kUdpPort is in use (is another copy open?): ${e.message}');
       _notify();
       return;
     }
@@ -229,7 +230,7 @@ class ReceiverController extends ChangeNotifier {
       await UniversalBle.startScan(scanFilter: ScanFilter(withServices: [kBleService]));
     } catch (e) {
       _scanning = false;
-      bleError = 'No se pudo buscar por Bluetooth: $e';
+      bleError = '${t('No se pudo buscar por Bluetooth', 'Could not scan over Bluetooth')}: $e';
       _notify();
       _retryLater();
     }
@@ -262,7 +263,7 @@ class ReceiverController extends ChangeNotifier {
       bleStatus = BleStatus.connected;
       bleError = null;
     } catch (e) {
-      bleError = 'No se pudo conectar: $e';
+      bleError = '${t('No se pudo conectar', 'Could not connect')}: $e';
       try {
         await d.disconnect();
       } catch (_) {}

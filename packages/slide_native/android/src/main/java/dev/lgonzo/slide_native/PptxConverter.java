@@ -78,7 +78,7 @@ final class PptxConverter {
      */
     static void convert(final Activity activity, final File input, final File output, final Callback callback) {
         if (!isAvailable()) {
-            callback.done("LibreOffice no está disponible: " + unavailableReason);
+            callback.done(Lang.t("LibreOffice no está disponible: ", "LibreOffice is not available: ") + unavailableReason);
             return;
         }
         handler().post(() -> {
@@ -95,13 +95,13 @@ final class PptxConverter {
                     // La primera vez desempaca archivos de LibreOffice (tarda unos segundos)
                     LibreOfficeKit.init(activity);
                     ByteBuffer h = LibreOfficeKit.getLibreOfficeKitHandle();
-                    if (h == null) throw new IllegalStateException("No se pudo iniciar LibreOffice");
+                    if (h == null) throw new IllegalStateException(Lang.t("No se pudo iniciar LibreOffice", "Could not start LibreOffice"));
                     office = new Office(h);
                 }
 
                 // Copiar a un nombre simple: evita problemas con espacios y acentos en la URL
                 File dir = new File(activity.getCacheDir(), "lo-convert");
-                if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Sin espacio temporal");
+                if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException(Lang.t("Sin espacio temporal", "No temporary space"));
                 String name = input.getName().toLowerCase();
                 String ext = name.contains(".") ? name.substring(name.lastIndexOf('.')) : ".pptx";
                 work = new File(dir, "entrada" + ext);
@@ -112,12 +112,12 @@ final class PptxConverter {
                 doc = office.documentLoad("file://" + work.getAbsolutePath());
                 if (doc == null) {
                     String err = office.getError();
-                    throw new IllegalStateException("No se pudo abrir la presentación"
+                    throw new IllegalStateException(Lang.t("No se pudo abrir la presentación", "Could not open the presentation")
                             + (err != null && !err.isEmpty() ? ": " + err : ""));
                 }
                 doc.saveAs("file://" + tmpOut.getAbsolutePath(), "pdf", "");
                 if (!tmpOut.exists() || tmpOut.length() == 0) {
-                    throw new IllegalStateException("LibreOffice no generó el PDF");
+                    throw new IllegalStateException(Lang.t("LibreOffice no generó el PDF", "LibreOffice did not produce the PDF"));
                 }
                 copy(tmpOut, output);
                 tmpOut.delete();
@@ -156,7 +156,7 @@ final class PptxConverter {
         AssetManager am = activity.getAssets();
         String[] top = am.list("unpack");
         if (top == null || top.length == 0) {
-            throw new IllegalStateException("Faltan los archivos de LibreOffice (assets/unpack) en el APK");
+            throw new IllegalStateException(Lang.t("Faltan los archivos de LibreOffice (assets/unpack) en el APK", "LibreOffice files (assets/unpack) are missing from the APK"));
         }
         int n = copyAssetTree(am, "unpack", dataDir);
         try (OutputStream out = new FileOutputStream(marker)) {

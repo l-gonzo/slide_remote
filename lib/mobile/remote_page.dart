@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../common/i18n.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
+import 'draw_page.dart';
 import 'remote_controller.dart';
 import 'wifi_client.dart';
 
@@ -51,7 +53,7 @@ class _RemotePageState extends State<RemotePage> {
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: c,
+          listenable: Listenable.merge([c, I18n.current]),
           builder: (context, _) {
             if (!c.ready) return const Center(child: CircularProgressIndicator());
             final notes = c.deck != null;
@@ -80,7 +82,7 @@ class _RemotePageState extends State<RemotePage> {
                   const SizedBox(height: 16),
                   Segmented<Mode>(
                     values: Mode.values,
-                    labels: const ['Bluetooth', 'WiFi', 'Navegador'],
+                    labels: ['Bluetooth', 'WiFi', t('Navegador', 'Browser')],
                     selected: c.mode,
                     onChanged: c.setMode,
                   ),
@@ -137,7 +139,7 @@ class _RemotePageState extends State<RemotePage> {
           IconButton(
             onPressed: _openSettings,
             icon: const Icon(Icons.tune_rounded, color: Pal.muted),
-            tooltip: 'Ajustes',
+            tooltip: t('Ajustes', 'Settings'),
           ),
         ],
       );
@@ -157,13 +159,13 @@ class _RemotePageState extends State<RemotePage> {
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Caption('Teclado conectado a'),
+              Caption(t('Teclado conectado a', 'Keyboard connected to')),
               Text(c.btDeviceName ?? 'PC',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             ]),
           ),
-          PillButton('Desconectar', onTap: c.disconnectBluetooth, dense: true),
+          PillButton(t('Desconectar', 'Disconnect'), onTap: c.disconnectBluetooth, dense: true),
         ]),
       );
     }
@@ -172,22 +174,25 @@ class _RemotePageState extends State<RemotePage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(
             switch (s) {
-              BtState.off => 'Activa el Bluetooth del teléfono.',
-              BtState.noPermission => 'Slide Remote necesita el permiso de “Dispositivos cercanos”.',
-              _ => c.btMessage ?? 'El modo teclado no está disponible en este teléfono. Usa WiFi o Navegador.',
+              BtState.off => t('Activa el Bluetooth del teléfono.', 'Turn on Bluetooth on your phone.'),
+              BtState.noPermission => t('Slide Remote necesita el permiso de “Dispositivos cercanos”.',
+                  'Slide Remote needs the “Nearby devices” permission.'),
+              _ => c.btMessage ??
+                  t('El modo teclado no está disponible en este teléfono. Usa WiFi o Navegador.',
+                      'Keyboard mode is not available on this phone. Use WiFi or Browser.'),
             },
             style: const TextStyle(color: Pal.muted, height: 1.4),
           ),
           if (s != BtState.unavailable) ...[
             const SizedBox(height: 12),
-            PillButton('Reintentar', primary: true, onTap: c.retryBluetooth),
+            PillButton(t('Reintentar', 'Retry'), primary: true, onTap: c.retryBluetooth),
           ],
         ]),
       );
     }
     return SrCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Caption('Tu PC'),
+        Caption(t('Tu PC', 'Your computer')),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
@@ -202,7 +207,7 @@ class _RemotePageState extends State<RemotePage> {
               isExpanded: true,
               dropdownColor: Pal.cardHi,
               borderRadius: BorderRadius.circular(12),
-              hint: const Text('Ninguna PC emparejada', style: TextStyle(color: Pal.muted)),
+              hint: Text(t('Ninguna PC emparejada', 'No paired computer'), style: const TextStyle(color: Pal.muted)),
               items: [
                 for (final d in c.bonded)
                   DropdownMenuItem(value: d.address, child: Text(d.name, overflow: TextOverflow.ellipsis)),
@@ -215,13 +220,13 @@ class _RemotePageState extends State<RemotePage> {
         Row(children: [
           Expanded(
             child: PillButton(
-              c.btState == BtState.connecting ? 'Conectando…' : 'Conectar',
+              c.btState == BtState.connecting ? t('Conectando…', 'Connecting…') : t('Conectar', 'Connect'),
               primary: true,
               onTap: c.btState == BtState.connecting ? null : c.connectSelected,
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(child: PillButton('Emparejar nueva', onTap: c.pairNew)),
+          Expanded(child: PillButton(t('Emparejar nueva', 'Pair new'), onTap: c.pairNew)),
         ]),
         const SizedBox(height: 4),
         Align(
@@ -229,14 +234,16 @@ class _RemotePageState extends State<RemotePage> {
           child: TextButton.icon(
             onPressed: c.refreshBonded,
             icon: const Icon(Icons.refresh, size: 16, color: Pal.muted),
-            label: const Text('Actualizar lista', style: TextStyle(color: Pal.muted)),
+            label: Text(t('Actualizar lista', 'Refresh list'), style: const TextStyle(color: Pal.muted)),
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
         ),
-        const Text(
-          'Sin instalar nada en la PC: el teléfono funciona como teclado Bluetooth '
-          '(Windows, Mac y Linux).',
-          style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
+        Text(
+          t('Sin instalar nada en la PC: el teléfono funciona como teclado Bluetooth '
+              '(Windows, Mac, Linux, tablets).',
+              'Nothing to install on the computer: the phone works as a Bluetooth keyboard '
+              '(Windows, Mac, Linux, tablets).'),
+          style: const TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
         ),
       ]),
     );
@@ -259,15 +266,17 @@ class _RemotePageState extends State<RemotePage> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
-              connected ? 'Conectado a la PC' : 'Buscando la PC…',
+              connected ? t('Conectado a la PC', 'Connected to the computer') : t('Buscando la PC…', 'Looking for the computer…'),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
               connected
-                  ? 'Los botones de volumen ya cambian la diapositiva.'
-                  : 'Abre Slide Remote para escritorio en la PC; se conecta sola. '
+                  ? t('Los botones de volumen ya cambian la diapositiva.', 'The volume buttons now change the slide.')
+                  : t('Abre Slide Remote para escritorio en la PC; se conecta sola. '
                       'En iPhone, el Bluetooth necesita esa app.',
+                      'Open Slide Remote for desktop on the computer; it connects by itself. '
+                      'On iPhone, Bluetooth needs that app.'),
               style: const TextStyle(color: Pal.muted, fontSize: 13, height: 1.4),
             ),
           ]),
@@ -287,7 +296,7 @@ class _RemotePageState extends State<RemotePage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          const Expanded(child: Caption('PCs con Slide Remote')),
+          Expanded(child: Caption(t('PCs con Slide Remote', 'Computers with Slide Remote'))),
           if (c.wifi.searching)
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
@@ -295,11 +304,12 @@ class _RemotePageState extends State<RemotePage> {
             ),
         ]),
         if (all.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
-              'Abre Slide Remote para escritorio en la PC y conéctate a la misma red WiFi.',
-              style: TextStyle(color: Pal.muted, height: 1.4),
+              t('Abre Slide Remote para escritorio en la PC y conéctate a la misma red WiFi.',
+                  'Open Slide Remote for desktop on the computer and join the same WiFi network.'),
+              style: const TextStyle(color: Pal.muted, height: 1.4),
             ),
           ),
         for (final pc in all) _pcTile(pc, selected: target?.name == pc.name),
@@ -308,7 +318,7 @@ class _RemotePageState extends State<RemotePage> {
           child: TextButton.icon(
             onPressed: _manualIpDialog,
             icon: const Icon(Icons.add, size: 16, color: Pal.muted),
-            label: const Text('Agregar por IP', style: TextStyle(color: Pal.muted)),
+            label: Text(t('Agregar por IP', 'Add by IP'), style: const TextStyle(color: Pal.muted)),
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
         ),
@@ -356,26 +366,26 @@ class _RemotePageState extends State<RemotePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Pal.card,
-        title: const Text('Agregar PC por IP'),
+        title: Text(t('Agregar PC por IP', 'Add computer by IP')),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
             controller: ip,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'IP de la PC', hintText: '192.168.1.50'),
+            decoration: InputDecoration(labelText: t('IP de la PC', 'Computer IP'), hintText: '192.168.1.50'),
             style: monoStyle,
           ),
           const SizedBox(height: 10),
           TextField(
             controller: port,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Puerto'),
+            decoration: InputDecoration(labelText: t('Puerto', 'Port')),
             style: monoStyle,
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Agregar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('Cancelar', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(t('Agregar', 'Add'))),
         ],
       ),
     );
@@ -396,10 +406,10 @@ class _RemotePageState extends State<RemotePage> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Convirtiendo a PDF…', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(t('Convirtiendo a PDF…', 'Converting to PDF…'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
               Text(
-                '${c.convertingName ?? ''}\nSe hace en el teléfono, sin internet. La primera vez tarda más.',
+                '${c.convertingName ?? ''}\n${t('Se hace en el teléfono, sin internet. La primera vez tarda más.', 'Done on the phone, offline. The first time takes longer.')}',
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Pal.muted, fontSize: 13, height: 1.4),
@@ -415,32 +425,34 @@ class _RemotePageState extends State<RemotePage> {
     if (!b.hasPdf) {
       return SrCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Proyecta sin instalar nada en la PC',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(t('Proyecta sin instalar nada en la PC', 'Present without installing anything on the computer'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(
-            'Elige tu presentación (PowerPoint${c.isIOS ? ', Keynote' : ''} o PDF) y abre en el navegador '
-            'de la PC la dirección que aparece. Si es .pptx u .odp, también verás tus notas aquí.',
+            t('Elige tu presentación (PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} o PDF) y abre en el navegador '
+                'de la PC la dirección que aparece. Si es .pptx u .odp, también verás tus notas aquí.',
+                'Pick your presentation (PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} or PDF) and open the address '
+                'shown here in the computer’s browser. With .pptx or .odp you’ll also see your notes here.'),
             style: const TextStyle(color: Pal.muted, height: 1.4),
           ),
           const SizedBox(height: 14),
-          PillButton('Elegir presentación', primary: true, icon: Icons.slideshow_rounded, onTap: c.pickPresentation),
+          PillButton(t('Elegir presentación', 'Choose presentation'), primary: true, icon: Icons.slideshow_rounded, onTap: c.pickPresentation),
         ]),
       );
     }
     final url = b.urls.isNotEmpty ? b.urls.first : null;
     return SrCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Caption('En la PC, abre en el navegador'),
+        Caption(t('En la PC, abre en el navegador', 'On the computer, open in the browser')),
         if (url == null)
-          const Text('Conéctate a una red WiFi (o activa el punto de acceso del teléfono).',
-              style: TextStyle(color: Pal.muted))
+          Text(t('Conéctate a una red WiFi (o activa el punto de acceso del teléfono).', 'Connect to a WiFi network (or turn on the phone’s hotspot).'),
+              style: const TextStyle(color: Pal.muted))
         else
           InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () {
               Clipboard.setData(ClipboardData(text: url));
-              _showNudge('Dirección copiada');
+              _showNudge(t('Dirección copiada', 'Address copied'));
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -474,21 +486,31 @@ class _RemotePageState extends State<RemotePage> {
           const Icon(Icons.slideshow_rounded, size: 18, color: Pal.muted),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(b.pdfName ?? 'presentación',
+            child: Text(b.pdfName ?? t('presentación', 'presentation'),
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Pal.text)),
           ),
           if (c.deck != null)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
               child: Tooltip(
-                message: 'Notas cargadas',
-                child: Icon(Icons.sticky_note_2_outlined, size: 18, color: Pal.accent),
+                message: t('Notas cargadas', 'Notes loaded'),
+                child: const Icon(Icons.sticky_note_2_outlined, size: 18, color: Pal.accent),
               ),
             ),
-          PillButton('Cambiar', dense: true, onTap: c.pickPresentation),
+          PillButton(t('Cambiar', 'Change'), dense: true, onTap: c.pickPresentation),
         ]),
+        const SizedBox(height: 10),
+        PillButton(
+          t('Dibujar sobre la diapositiva', 'Draw on the slide'),
+          icon: Icons.draw_rounded,
+          onTap: _openDraw,
+        ),
       ]),
     );
+  }
+
+  void _openDraw() {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DrawPage(c: c)));
   }
 
   // ================================================================ botones grandes
@@ -502,7 +524,7 @@ class _RemotePageState extends State<RemotePage> {
         Expanded(
           child: _Pad(
             primary: false,
-            label: 'Anterior',
+            label: t('Anterior', 'Previous'),
             icon: Icons.arrow_back_rounded,
             hint: c.invert ? 'VOL +' : 'VOL −',
             pulse: c.pulsePrev,
@@ -515,7 +537,7 @@ class _RemotePageState extends State<RemotePage> {
           flex: 2,
           child: _Pad(
             primary: true,
-            label: 'Siguiente',
+            label: t('Siguiente', 'Next'),
             icon: Icons.arrow_forward_rounded,
             hint: c.invert ? 'VOL −' : 'VOL +',
             pulse: c.pulseNext,
@@ -540,7 +562,7 @@ class _RemotePageState extends State<RemotePage> {
           flex: 2,
           child: _Pad(
             primary: true,
-            label: 'Siguiente',
+            label: t('Siguiente', 'Next'),
             icon: Icons.arrow_forward_rounded,
             hint: fwdHint,
             counter: counter,
@@ -552,7 +574,7 @@ class _RemotePageState extends State<RemotePage> {
         Expanded(
           child: _Pad(
             primary: false,
-            label: 'Anterior',
+            label: t('Anterior', 'Previous'),
             icon: Icons.arrow_back_rounded,
             hint: backHint,
             pulse: c.pulsePrev,
@@ -582,18 +604,18 @@ class _RemotePageState extends State<RemotePage> {
               Expanded(
                 child: c.mode == Mode.wifi
                     // Por WiFi lo normal es que la presentación esté solo en la PC
-                    ? const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Ver notas del presentador', style: TextStyle(fontWeight: FontWeight.w600)),
-                        SizedBox(height: 2),
-                        Text('Elige la presentación en la app de la PC',
-                            style: TextStyle(color: Pal.muted, fontSize: 12.5)),
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(t('Ver notas del presentador', 'Show speaker notes'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text(t('Elige la presentación en la app de la PC', 'Choose the presentation in the desktop app'),
+                            style: const TextStyle(color: Pal.muted, fontSize: 12.5)),
                       ])
-                    : const Text('Ver notas del presentador', style: TextStyle(fontWeight: FontWeight.w600)),
+                    : Text(t('Ver notas del presentador', 'Show speaker notes'), style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
               if (c.deckLoading)
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               else
-                Text(c.mode == Mode.wifi ? 'o elígela aquí' : 'Elegir archivo',
+                Text(c.mode == Mode.wifi ? t('o elígela aquí', 'or pick it here') : t('Elegir archivo', 'Choose file'),
                     style: const TextStyle(color: Pal.muted, fontSize: 13)),
             ]),
           ),
@@ -610,11 +632,11 @@ class _RemotePageState extends State<RemotePage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           if (c.notesFromPc)
-            const Padding(
-              padding: EdgeInsets.only(right: 6),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
               child: Tooltip(
-                message: 'Notas enviadas por la app de la PC',
-                child: Icon(Icons.computer_rounded, size: 16, color: Pal.muted),
+                message: t('Notas enviadas por la app de la PC', 'Notes sent by the desktop app'),
+                child: const Icon(Icons.computer_rounded, size: 16, color: Pal.muted),
               ),
             ),
           Text(
@@ -626,13 +648,13 @@ class _RemotePageState extends State<RemotePage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(color: Pal.cardHi, borderRadius: BorderRadius.circular(8)),
-              child: Text('animación ${c.step}/${s.clicks}', style: const TextStyle(color: Pal.muted, fontSize: 11)),
+              child: Text('${t('animación', 'animation')} ${c.step}/${s.clicks}', style: const TextStyle(color: Pal.muted, fontSize: 11)),
             ),
           ],
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              s?.title.isNotEmpty == true ? s!.title : 'Diapositiva ${s?.number ?? ''}',
+              s?.title.isNotEmpty == true ? s!.title : '${t('Diapositiva', 'Slide')} ${s?.number ?? ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Pal.muted, fontSize: 13),
@@ -646,7 +668,7 @@ class _RemotePageState extends State<RemotePage> {
           _tinyButton(
             _notesExpanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
             () => setState(() => _notesExpanded = !_notesExpanded),
-            tooltip: _notesExpanded ? 'Contraer notas' : 'Expandir notas',
+            tooltip: _notesExpanded ? t('Contraer notas', 'Collapse notes') : t('Expandir notas', 'Expand notes'),
           ),
         ]),
         const Divider(color: Pal.stroke, height: 14),
@@ -655,7 +677,7 @@ class _RemotePageState extends State<RemotePage> {
             key: ValueKey(c.slide), // al cambiar de diapositiva, regresar arriba
             padding: const EdgeInsets.only(right: 8),
             child: Text(
-              hasNotes ? s.notes : 'Sin notas en esta diapositiva.',
+              hasNotes ? s.notes : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
               style: TextStyle(
                 fontSize: _notesFont,
                 height: 1.45,
@@ -667,7 +689,7 @@ class _RemotePageState extends State<RemotePage> {
         if (next != null) ...[
           const SizedBox(height: 8),
           Text(
-            'Sigue: ${next.title.isNotEmpty ? next.title : 'diapositiva ${next.number}'}',
+            '${t('Sigue', 'Next')}: ${next.title.isNotEmpty ? next.title : '${t('diapositiva', 'slide')} ${next.number}'}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Pal.muted, fontSize: 12),
@@ -702,19 +724,22 @@ class _RemotePageState extends State<RemotePage> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => ListenableBuilder(
-        listenable: c,
+        listenable: Listenable.merge([c, I18n.current]),
         builder: (ctx, _) => SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-              const Text('Ajustes', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              Text(t('Ajustes', 'Settings'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              _switch('Invertir botones', 'Volumen − avanza', c.invert, c.setInvert),
-              _switch('Usar flechas ← →', 'Si tu programa no responde a AvPág/RePág', c.arrows, c.setArrows),
+              _switch(t('Invertir botones', 'Swap buttons'), t('Volumen − avanza', 'Volume − goes forward'), c.invert, c.setInvert),
+              _switch(t('Usar flechas ← →', 'Use arrow keys ← →'),
+                  t('Si tu programa no responde a AvPág/RePág', 'If your app ignores Page Down/Page Up'), c.arrows, c.setArrows),
+              const SizedBox(height: 10),
+              _languagePicker(),
               const SizedBox(height: 14),
-              const Caption('Notas del presentador'),
+              Caption(t('Notas del presentador', 'Speaker notes')),
               if (c.deck == null)
-                PillButton('Elegir presentación (.pptx, .odp)', icon: Icons.sticky_note_2_outlined, onTap: () {
+                PillButton(t('Elegir presentación (.pptx, .odp)', 'Choose presentation (.pptx, .odp)'), icon: Icons.sticky_note_2_outlined, onTap: () {
                   Navigator.pop(ctx);
                   c.pickNotes();
                 })
@@ -722,41 +747,44 @@ class _RemotePageState extends State<RemotePage> {
                 Row(children: [
                   Icon(c.notesFromPc ? Icons.computer_rounded : Icons.slideshow_rounded, size: 18, color: Pal.muted),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(c.deckName ?? 'presentación.pptx', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Expanded(child: Text(c.deckName ?? t('presentación.pptx', 'presentation.pptx'), maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ]),
                 if (c.notesFromPc)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      'Vienen de la app de la PC. Para cambiarlas, elige otra presentación allá.',
-                      style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
+                      t('Vienen de la app de la PC. Para cambiarlas, elige otra presentación allá.',
+                          'They come from the desktop app. To change them, choose another presentation there.'),
+                      style: const TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
                     ),
                   ),
                 const SizedBox(height: 10),
                 Row(children: [
-                  const Expanded(child: Text('Tamaño del texto')),
+                  Expanded(child: Text(t('Tamaño del texto', 'Text size'))),
                   _tinyButton(Icons.text_decrease, () => setState(() => _notesFont = (_notesFont - 2).clamp(13, 32))),
                   _tinyButton(Icons.text_increase, () => setState(() => _notesFont = (_notesFont + 2).clamp(13, 32))),
                 ]),
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: [
-                  PillButton('Volver a la diapositiva 1', dense: true, onTap: c.restartNotes),
+                  PillButton(t('Volver a la diapositiva 1', 'Back to slide 1'), dense: true, onTap: c.restartNotes),
                   if (!c.notesFromPc) ...[
-                    PillButton('Cambiar archivo', dense: true, onTap: () {
+                    PillButton(t('Cambiar archivo', 'Change file'), dense: true, onTap: () {
                       Navigator.pop(ctx);
                       c.pickNotes();
                     }),
-                    PillButton('Quitar notas', dense: true, onTap: () {
+                    PillButton(t('Quitar notas', 'Remove notes'), dense: true, onTap: () {
                       Navigator.pop(ctx);
                       c.clearNotes();
                     }),
                   ],
                 ]),
                 const SizedBox(height: 10),
-                const Text(
-                  'Por Bluetooth y WiFi el teléfono cuenta las pulsaciones (incluidas las animaciones). '
-                  'Si se desfasa, corrígelo con − / + en el panel de notas. En el modo Navegador se sincroniza solo.',
-                  style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
+                Text(
+                  t('Por Bluetooth y WiFi el teléfono cuenta las pulsaciones (incluidas las animaciones). '
+                      'Si se desfasa, corrígelo con − / + en el panel de notas. En el modo Navegador se sincroniza solo.',
+                      'Over Bluetooth and WiFi the phone counts the presses (animations included). '
+                      'If it gets out of step, fix it with − / + in the notes panel. Browser mode syncs by itself.'),
+                  style: const TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
                 ),
               ],
             ]),
@@ -765,6 +793,20 @@ class _RemotePageState extends State<RemotePage> {
       ),
     );
   }
+
+  /// Idioma: Sistema / Español / English (se guarda; "Sistema" usa inglés si el sistema no está en español).
+  Widget _languagePicker() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Caption(t('Idioma', 'Language')),
+        Segmented<LangPref>(
+          values: LangPref.values,
+          labels: [t('Sistema', 'System'), 'Español', 'English'],
+          selected: I18n.pref,
+          onChanged: (p) {
+            I18n.setPref(p);
+            c.languageChanged();
+          },
+        ),
+      ]);
 
   Widget _switch(String title, String sub, bool value, ValueChanged<bool> onChanged) => SwitchListTile(
         contentPadding: EdgeInsets.zero,

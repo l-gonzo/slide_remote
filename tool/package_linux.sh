@@ -71,7 +71,8 @@ cat > "$D/usr/share/applications/$PKG.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Slide Remote
-Comment=Cambia las diapositivas desde el teléfono
+Comment=Change slides from your phone
+Comment[es]=Cambia las diapositivas desde el teléfono
 Exec=/opt/$PKG/slide_remote
 Icon=$PKG
 Terminal=false

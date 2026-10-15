@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
@@ -144,6 +144,7 @@ class RemoteController extends ChangeNotifier {
     await _restoreNotes();
 
     _nativeSub = NativeBridge.events.listen(_onNative);
+    languageChanged();
     _ready = true;
     notifyListeners();
     await onForeground();
@@ -226,26 +227,26 @@ class RemoteController extends ChangeNotifier {
         if (isAndroid) {
           if (await NativeBridge.hidSend(hidUsageFor(cmd))) return _advance(forward);
           if (await NativeBridge.hidReconnect()) {
-            _nudge('Reconectando con la PC…');
+            _nudge(t('Reconectando con la PC…', 'Reconnecting to the computer…'));
           } else {
-            _nudge('Conecta tu PC primero');
+            _nudge(t('Conecta tu PC primero', 'Connect your computer first'));
           }
         } else {
           if (await NativeBridge.bleSend(cmd)) return _advance(forward);
-          _nudge('Abre Slide Remote en la PC para conectar');
+          _nudge(t('Abre Slide Remote en la PC para conectar', 'Open Slide Remote on the computer to connect'));
         }
       case Mode.wifi:
-        if (wifi.target == null) return _nudge('Elige tu PC');
+        if (wifi.target == null) return _nudge(t('Elige tu PC', 'Choose your computer'));
         final sent = wifi.send(cmd);
         if (sent) _advance(forward);
         if (!sent) {
-          _nudge('No se pudo enviar');
+          _nudge(t('No se pudo enviar', 'Could not send'));
         } else if (!wifi.online) {
-          _nudge('La PC no responde. ¿Está abierta Slide Remote?');
+          _nudge(t('La PC no responde. ¿Está abierta Slide Remote?', 'The computer is not responding. Is Slide Remote open?'));
         }
       case Mode.browser:
-        if (!browser.hasPdf) return _nudge('Primero elige tu presentación');
-        if (!browser.go(forward ? 1 : -1)) _nudge('Abre la dirección en el navegador de la PC');
+        if (!browser.hasPdf) return _nudge(t('Primero elige tu presentación', 'Choose your presentation first'));
+        if (!browser.go(forward ? 1 : -1)) _nudge(t('Abre la dirección en el navegador de la PC', 'Open the address in the computer’s browser'));
     }
   }
 
@@ -254,6 +255,14 @@ class RemoteController extends ChangeNotifier {
   }
 
   // ================================================================ ajustes
+
+  /// Avisar del idioma a la parte nativa (mensajes de Bluetooth/conversión) y a la página
+  /// del modo Navegador. La interfaz se redibuja sola al cambiar [I18n.current].
+  void languageChanged() {
+    NativeBridge.setLanguage(I18n.current.value);
+    browser.setLanguage(I18n.current.value);
+    notifyListeners();
+  }
 
   Future<void> setInvert(bool v) async {
     invert = v;
@@ -278,7 +287,7 @@ class RemoteController extends ChangeNotifier {
     }
     if (!await NativeBridge.hidSupported()) {
       btState = BtState.unavailable;
-      btMessage = 'Este teléfono no soporta el modo teclado Bluetooth';
+      btMessage = t('Este teléfono no soporta el modo teclado Bluetooth', 'This phone does not support Bluetooth keyboard mode');
       notifyListeners();
       return;
     }
@@ -313,7 +322,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> connectSelected() async {
     final addr = selectedAddress;
-    if (addr == null) return _nudge('Primero empareja tu PC');
+    if (addr == null) return _nudge(t('Primero empareja tu PC', 'Pair your computer first'));
     await NativeBridge.hidConnect(addr);
   }
 
@@ -334,7 +343,10 @@ class RemoteController extends ChangeNotifier {
       case 'ble':
         _onBle(e);
       case 'discoverable':
-        if (e['ok'] == true) _nudge('Visible por 2 min: empareja desde la configuración Bluetooth de la PC');
+        if (e['ok'] == true) {
+          _nudge(t('Visible por 2 min: empareja desde la configuración Bluetooth de la PC',
+              'Visible for 2 min: pair from the computer’s Bluetooth settings'));
+        }
     }
   }
 
@@ -447,8 +459,9 @@ class RemoteController extends ChangeNotifier {
       final (available, reason) = await NativeBridge.converterStatus();
       if (!available) {
         _nudge(reason == null
-            ? 'Esta versión no incluye el convertidor. Elige la presentación exportada a PDF.'
-            : 'Convertidor no disponible: $reason');
+            ? t('Esta versión no incluye el convertidor. Elige la presentación exportada a PDF.',
+                'This version does not include the converter. Choose the presentation exported as PDF.')
+            : '${t('Convertidor no disponible', 'Converter not available')}: $reason');
         return;
       }
       if (await output.exists()) await output.delete();
@@ -461,11 +474,11 @@ class RemoteController extends ChangeNotifier {
       await output.copy(dest.path);
       await _prefs.setString('pdf_name', name);
       await browser.setPdf(dest, name);
-      if (deck != null && kNotesExtensions.contains(ext)) _nudge('Listo: presentación convertida y notas cargadas');
+      if (deck != null && kNotesExtensions.contains(ext)) _nudge(t('Listo: presentación convertida y notas cargadas', 'Done: presentation converted and notes loaded'));
     } on PlatformException catch (e) {
-      _nudge('No se pudo convertir: ${e.message ?? e.code}');
+      _nudge('${t('No se pudo convertir', 'Could not convert')}: ${e.message ?? e.code}');
     } catch (e) {
-      _nudge('No se pudo convertir: $e');
+      _nudge('${t('No se pudo convertir', 'Could not convert')}: $e');
     } finally {
       converting = false;
       convertingName = null;
@@ -560,7 +573,7 @@ class RemoteController extends ChangeNotifier {
   /// Carga las notas de un .pptx ya leído. Lanza FormatException si no es válido.
   Future<void> _loadNotes(Uint8List bytes, String name, {required bool quiet}) async {
     final parsed = await PptxNotes.parse(bytes);
-    if (parsed.slides.isEmpty) throw const FormatException('La presentación no tiene diapositivas.');
+    if (parsed.slides.isEmpty) throw FormatException(t('La presentación no tiene diapositivas.', 'The presentation has no slides.'));
     await (await _notesStore()).writeAsBytes(bytes, flush: true);
     await _prefs.setString('notes_name', name);
     _localDeck = parsed.slides;
@@ -569,7 +582,7 @@ class RemoteController extends ChangeNotifier {
     _localSlide = 0;
     _localStep = 0;
     if (!quiet && parsed.slides.every((s) => s.notes.trim().isEmpty)) {
-      _nudge('Esta presentación no tiene notas del presentador');
+      _nudge(t('Esta presentación no tiene notas del presentador', 'This presentation has no speaker notes'));
     }
   }
 
@@ -584,7 +597,7 @@ class RemoteController extends ChangeNotifier {
     } on FormatException catch (e) {
       _nudge(e.message);
     } catch (_) {
-      _nudge('No se pudo leer el archivo. ¿Es un .pptx u .odp?');
+      _nudge(t('No se pudo leer el archivo. ¿Es un .pptx u .odp?', 'Could not read the file. Is it a .pptx or .odp?'));
     } finally {
       deckLoading = false;
       notifyListeners();
@@ -654,7 +667,7 @@ class RemoteController extends ChangeNotifier {
       final sameFile = _pcName == j['name'] && _pcDeck?.length == parsed.slides.length;
       _pcDeck = parsed.slides;
       _pcTotal = parsed.total;
-      _pcName = (j['name'] as String?) ?? 'presentación';
+      _pcName = (j['name'] as String?) ?? t('presentación', 'presentation');
       _pcVersion = v;
       _pcFor = host.address;
       if (sameFile) {
@@ -664,7 +677,7 @@ class RemoteController extends ChangeNotifier {
       } else {
         _pcSlide = 0;
         _pcStep = 0;
-        if (mode == Mode.wifi) _nudge('Notas de la PC: $_pcName');
+        if (mode == Mode.wifi) _nudge('${t('Notas de la PC', 'Notes from the computer')}: $_pcName');
       }
     } catch (e) {
       debugPrint('Notas de la PC: $e');
@@ -691,31 +704,33 @@ class RemoteController extends ChangeNotifier {
     switch (mode) {
       case Mode.bluetooth:
         return switch (btState) {
-          BtState.connected => ConnView(Conn.on, 'Conectado', isIOS ? 'App de escritorio' : btDeviceName),
-          BtState.connecting => ConnView(Conn.busy, 'Conectando…', btDeviceName),
-          BtState.waiting => const ConnView(Conn.busy, 'Esperando PC', 'Abre Slide Remote en la PC'),
-          BtState.off => const ConnView(Conn.error, 'Bluetooth apagado', 'Actívalo en el teléfono'),
-          BtState.noPermission => const ConnView(Conn.error, 'Sin permiso', 'Permite el acceso a Bluetooth'),
-          BtState.unavailable => ConnView(Conn.error, 'No disponible', btMessage),
-          BtState.idle => ConnView(Conn.off, 'Desconectado', btMessage ?? 'Elige tu PC y conecta'),
-          BtState.unknown => const ConnView(Conn.off, 'Preparando…'),
+          BtState.connected => ConnView(Conn.on, t('Conectado', 'Connected'), isIOS ? t('App de escritorio', 'Desktop app') : btDeviceName),
+          BtState.connecting => ConnView(Conn.busy, t('Conectando…', 'Connecting…'), btDeviceName),
+          BtState.waiting => ConnView(Conn.busy, t('Esperando PC', 'Waiting for computer'), t('Abre Slide Remote en la PC', 'Open Slide Remote on the computer')),
+          BtState.off => ConnView(Conn.error, t('Bluetooth apagado', 'Bluetooth off'), t('Actívalo en el teléfono', 'Turn it on on the phone')),
+          BtState.noPermission => ConnView(Conn.error, t('Sin permiso', 'No permission'), t('Permite el acceso a Bluetooth', 'Allow Bluetooth access')),
+          BtState.unavailable => ConnView(Conn.error, t('No disponible', 'Not available'), btMessage),
+          BtState.idle => ConnView(Conn.off, t('Desconectado', 'Disconnected'), btMessage ?? t('Elige tu PC y conecta', 'Choose your computer and connect')),
+          BtState.unknown => ConnView(Conn.off, t('Preparando…', 'Getting ready…')),
         };
       case Mode.wifi:
         final pc = wifi.target;
-        if (pc == null) return const ConnView(Conn.off, 'Sin PC', 'Elige tu PC en la lista');
+        if (pc == null) return ConnView(Conn.off, t('Sin PC', 'No computer'), t('Elige tu PC en la lista', 'Choose your computer in the list'));
         if (wifi.online) {
-          return ConnView(Conn.on, 'Conectado', '${pc.name}${wifi.latencyMs != null ? ' · ${wifi.latencyMs} ms' : ''}');
+          return ConnView(Conn.on, t('Conectado', 'Connected'), '${pc.name}${wifi.latencyMs != null ? ' · ${wifi.latencyMs} ms' : ''}');
         }
-        return ConnView(Conn.busy, 'Buscando…', pc.name);
+        return ConnView(Conn.busy, t('Buscando…', 'Searching…'), pc.name);
       case Mode.browser:
         if (browser.error != null) return ConnView(Conn.error, 'Error', browser.error);
-        if (converting) return const ConnView(Conn.busy, 'Convirtiendo…', 'Se hace en el teléfono');
-        if (!browser.hasPdf) return const ConnView(Conn.off, 'Sin presentación', 'Elige tu presentación');
+        if (converting) return ConnView(Conn.busy, t('Convirtiendo…', 'Converting…'), t('Se hace en el teléfono', 'Done on the phone'));
+        if (!browser.hasPdf) return ConnView(Conn.off, t('Sin presentación', 'No presentation'), t('Elige tu presentación', 'Choose your presentation'));
         if (browser.viewers > 0) {
-          return ConnView(Conn.on, 'Proyectando',
-              browser.total > 0 ? 'Diapositiva ${browser.page} de ${browser.total}' : 'Cargando PDF…');
+          return ConnView(Conn.on, t('Proyectando', 'Presenting'),
+              browser.total > 0
+                  ? t('Diapositiva ${browser.page} de ${browser.total}', 'Slide ${browser.page} of ${browser.total}')
+                  : t('Cargando PDF…', 'Loading PDF…'));
         }
-        return const ConnView(Conn.busy, 'Esperando', 'Abre la dirección en la PC');
+        return ConnView(Conn.busy, t('Esperando', 'Waiting'), t('Abre la dirección en la PC', 'Open the address on the computer'));
     }
   }
 

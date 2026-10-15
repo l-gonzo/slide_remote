@@ -171,6 +171,11 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
     @Override
     public void onMethodCall(MethodCall call, MethodChannel.Result result) {
         switch (call.method) {
+            case "setLanguage": {
+                Lang.es = "es".equals(call.argument("lang"));
+                result.success(null);
+                return;
+            }
             case "setVolumeCapture": {
                 Boolean on = call.argument("enabled");
                 captureVolume = on != null && on;
@@ -202,13 +207,25 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 String in = call.argument("input");
                 String out = call.argument("output");
                 if (activity == null || in == null || out == null) {
-                    result.error("BAD_ARGS", "Faltan datos para convertir", null);
+                    result.error("BAD_ARGS", Lang.t("Faltan datos para convertir", "Missing conversion data"), null);
                     return;
                 }
                 PptxConverter.convert(activity, new java.io.File(in), new java.io.File(out),
                         error -> main.post(() -> {
                             if (error == null) result.success(null);
                             else result.error("CONVERT_FAILED", error, null);
+                        }));
+                return;
+            }
+            case "renderPdfPage": {
+                String path = call.argument("path");
+                Integer page = call.argument("page");
+                Integer width = call.argument("width");
+                if (path == null) { result.error("BAD_ARGS", "path", null); return; }
+                PdfPageRenderer.render(path, page != null ? page : 1, width != null ? width : 1280,
+                        (m, error) -> main.post(() -> {
+                            if (error == null) result.success(m);
+                            else result.error("RENDER_FAILED", error, null);
                         }));
                 return;
             }
@@ -226,7 +243,7 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         // ---- teclado HID (Android 9+)
         if (!call.method.startsWith("hid")) { result.notImplemented(); return; }
         if (Build.VERSION.SDK_INT < 28) { result.success(null); return; }
-        if (!hasPermissions()) { result.error("NO_PERMISSION", "Falta permiso de Bluetooth", null); return; }
+        if (!hasPermissions()) { result.error("NO_PERMISSION", Lang.t("Falta permiso de Bluetooth", "Bluetooth permission missing"), null); return; }
         BtHidKeyboard kb = keyboard();
         switch (call.method) {
             case "hidStart": {

@@ -2,7 +2,14 @@ import AVFoundation
 import CoreBluetooth
 import Flutter
 import MediaPlayer
+import PDFKit
 import UIKit
+
+/// Idioma de los mensajes nativos; lo fija la app con "setLanguage" ("es" o "en").
+enum SlideLang {
+    static var es = false
+    static func t(_ spanish: String, _ english: String) -> String { es ? spanish : english }
+}
 
 /// Puente nativo de Slide Remote para iOS.
 ///
@@ -66,6 +73,9 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any]
         switch call.method {
+        case "setLanguage":
+            SlideLang.es = (args?["lang"] as? String) == "es"
+            result(nil)
         case "setVolumeCapture":
             setVolumeCapture((args?["enabled"] as? Bool) ?? false)
             result(nil)
@@ -80,17 +90,28 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             result(bleSend(UInt8(clamping: cmd)))
         case "hidSupported":
             result(false)
+        case "renderPdfPage":
+            guard let path = args?["path"] as? String else {
+                result(FlutterError(code: "BAD_ARGS", message: "path", details: nil))
+                return
+            }
+            let page = (args?["page"] as? Int) ?? 1
+            let width = (args?["width"] as? Int) ?? 1280
+            DispatchQueue.global(qos: .userInitiated).async {
+                let out = SlideNativePlugin.renderPdfPage(path: path, page: page, width: width)
+                DispatchQueue.main.async { result(out) }
+            }
         case "converterAvailable":
             result(true)
         case "converterStatus":
             result(["available": true])
         case "convertToPdf":
             guard let input = args?["input"] as? String, let output = args?["output"] as? String else {
-                result(FlutterError(code: "BAD_ARGS", message: "Faltan datos para convertir", details: nil))
+                result(FlutterError(code: "BAD_ARGS", message: SlideLang.t("Faltan datos para convertir", "Missing conversion data"), details: nil))
                 return
             }
             if converter != nil {
-                result(FlutterError(code: "BUSY", message: "Ya hay una conversión en curso", details: nil))
+                result(FlutterError(code: "BUSY", message: SlideLang.t("Ya hay una conversión en curso", "A conversion is already running"), details: nil))
                 return
             }
             let conv = PresentationConverter()
@@ -181,6 +202,35 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         view.isUserInteractionEnabled = false
         window.addSubview(view)
         volumeView = view
+    }
+
+    /// Una página del PDF como JPEG (vista de dibujo del modo Navegador). [page] empieza en 1.
+    static func renderPdfPage(path: String, page: Int, width: Int) -> Any {
+        guard let doc = PDFDocument(url: URL(fileURLWithPath: path)), doc.pageCount > 0 else {
+            return FlutterError(code: "RENDER_FAILED", message: SlideLang.t("No se pudo abrir el PDF", "Could not open the PDF"), details: nil)
+        }
+        let index = max(0, min(page - 1, doc.pageCount - 1))
+        guard let p = doc.page(at: index) else {
+            return FlutterError(code: "RENDER_FAILED", message: "page", details: nil)
+        }
+        let box = p.bounds(for: .cropBox)
+        let rotated = p.rotation % 180 != 0
+        let pw = rotated ? box.height : box.width
+        let ph = rotated ? box.width : box.height
+        let w = CGFloat(max(64, min(width, 2400)))
+        let h = max(1, (w * ph / pw).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let img = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            let thumb = p.thumbnail(of: CGSize(width: w, height: h), for: .cropBox)
+            thumb.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        guard let data = img.jpegData(compressionQuality: 0.9) else {
+            return FlutterError(code: "RENDER_FAILED", message: "jpeg", details: nil)
+        }
+        return ["bytes": FlutterStandardTypedData(bytes: data), "width": Int(w), "height": Int(h), "pages": doc.pageCount]
     }
 
     static func keyWindow() -> UIWindow? {
