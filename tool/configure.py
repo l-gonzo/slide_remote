@@ -20,6 +20,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Consola de Windows: UTF-8 y colores
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+        os.system("")
+    except Exception:
+        pass
 PLATFORMS = "android,ios,macos,windows,linux"
 APP_NAME = "Slide Remote"
 BONJOUR = ["_slideremote._udp"]
@@ -115,6 +124,35 @@ def main():
         return s
 
     edit_text(ROOT / "android/app/build.gradle.kts", gradle_packaging)
+
+    def gradle_signing(s):
+        # Firma propia si existe android/key.properties (ver README); si no, la de depuración.
+        if "key.properties" in s or "    buildTypes {" not in s:
+            return s
+        block = (
+            "    signingConfigs {\n"
+            "        create(\"release\") {\n"
+            "            val f = rootProject.file(\"key.properties\")\n"
+            "            if (f.exists()) {\n"
+            "                val p = java.util.Properties().apply { f.inputStream().use { load(it) } }\n"
+            "                keyAlias = p.getProperty(\"keyAlias\")\n"
+            "                keyPassword = p.getProperty(\"keyPassword\")\n"
+            "                storeFile = file(p.getProperty(\"storeFile\"))\n"
+            "                storePassword = p.getProperty(\"storePassword\")\n"
+            "            }\n"
+            "        }\n"
+            "    }\n\n"
+            "    buildTypes {"
+        )
+        s = s.replace("    buildTypes {", block, 1)
+        s = s.replace(
+            'signingConfig = signingConfigs.getByName("debug")',
+            'signingConfig = signingConfigs.getByName(\n'
+            '                if (rootProject.file("key.properties").exists()) "release" else "debug")',
+            1)
+        return s
+
+    edit_text(ROOT / "android/app/build.gradle.kts", gradle_signing)
 
     # ------------------------------------------------------------------ 3. iOS
     log("iOS: permisos, Bonjour y versión mínima 14.0")

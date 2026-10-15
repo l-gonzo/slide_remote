@@ -9,3 +9,7 @@ build/
 # LibreOffice compilado para Android (lo genera tool/build_libreoffice_android.sh; ~100 MB)
 packages/slide_native/android/src/main/jniLibs/
 packages/slide_native/android/src/main/assets/
+
+# Instaladores (tool/package_*)
+dist/
+__pycache__/

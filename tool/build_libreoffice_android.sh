@@ -162,3 +162,4 @@ as_mb=$(du -sm "$PLUGIN/assets" | cut -f1)
 log "Listo: bibliotecas ${so_mb} MB + archivos ${as_mb} MB (sin comprimir)."
 echo "    Ahora compila la app normalmente:  flutter build apk --release --split-per-abi"
 echo "    El convertidor está en el APK arm64-v8a (todos los teléfonos actuales)."
+echo "    Para usarlo en otras computadoras (Mac/Windows) súbelo una vez:  python3 tool/libreoffice_android.py upload"
