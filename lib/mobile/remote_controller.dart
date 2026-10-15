@@ -77,11 +77,10 @@ class RemoteController extends ChangeNotifier {
   // ---- notas del presentador (.pptx)
   // Hay dos fuentes: un .pptx elegido en el teléfono, o las que manda la app de escritorio
   // por WiFi (el archivo se queda en la PC). En el modo WiFi mandan las de la PC si las hay.
-  List<SlideInfo>? _localDeck;
-  String? _localName;
-  int _localTotal = 0;
-  int _localSlide = 0;
-  int _localStep = 0;
+  // Notas elegidas en el teléfono: separadas por modo (las de "Transmitir desde móvil" no se
+  // mezclan con las de "Control Bluetooth", etc.).
+  final Map<Mode, _NotesSlot> _slots = {for (final m in Mode.values) m: _NotesSlot(m)};
+  _NotesSlot get _slot => _slots[mode]!;
 
   List<SlideInfo>? _pcDeck;
   String? _pcName;
@@ -98,27 +97,27 @@ class RemoteController extends ChangeNotifier {
   /// true si las notas que se ven vienen de la app de escritorio.
   bool get notesFromPc => mode == Mode.wifi && _pcDeck != null;
 
-  List<SlideInfo>? get deck => notesFromPc ? _pcDeck : _localDeck;
-  String? get deckName => notesFromPc ? _pcName : _localName;
-  int get _deckTotal => notesFromPc ? _pcTotal : _localTotal;
+  List<SlideInfo>? get deck => notesFromPc ? _pcDeck : _slot.deck;
+  String? get deckName => notesFromPc ? _pcName : _slot.name;
+  int get _deckTotal => notesFromPc ? _pcTotal : _slot.total;
 
   /// Índice en [deck] (solo diapositivas visibles).
-  int get slide => notesFromPc ? _pcSlide : _localSlide;
+  int get slide => notesFromPc ? _pcSlide : _slot.slide;
   set slide(int v) {
     if (notesFromPc) {
       _pcSlide = v;
     } else {
-      _localSlide = v;
+      _slot.slide = v;
     }
   }
 
   /// Clics de animación ya dados en la diapositiva actual.
-  int get step => notesFromPc ? _pcStep : _localStep;
+  int get step => notesFromPc ? _pcStep : _slot.step;
   set step(int v) {
     if (notesFromPc) {
       _pcStep = v;
     } else {
-      _localStep = v;
+      _slot.step = v;
     }
   }
 
@@ -480,6 +479,7 @@ class RemoteController extends ChangeNotifier {
     final dest = await _pdfStore();
 
     if (ext == 'pdf') {
+      await clearNotes(of: Mode.browser); // un PDF no trae notas: no dejar las de otra presentación
       await dest.writeAsBytes(bytes, flush: true);
       await _prefs.setString('pdf_name', name);
       await browser.setPdf(dest, name);
@@ -499,10 +499,13 @@ class RemoteController extends ChangeNotifier {
       if (kNotesExtensions.contains(ext)) {
         try {
           info = await PptxNotes.parse(bytes);
-          await _loadNotes(bytes, name, quiet: true);
+          await _loadNotes(bytes, name, quiet: true, into: Mode.browser);
         } catch (_) {
           info = null; // sin notas, pero se intenta convertir igual
+          await clearNotes(of: Mode.browser);
         }
+      } else {
+        await clearNotes(of: Mode.browser);
       }
 
       final (available, reason) = await NativeBridge.converterStatus();
@@ -598,38 +601,56 @@ class RemoteController extends ChangeNotifier {
     return (page - 1).clamp(0, d.length - 1);
   }
 
-  Future<File> _notesStore() async {
+  Future<File> _notesStore(Mode m) async {
     final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/notas.pptx');
+    return File('${dir.path}/notas_${m.name}.bin');
   }
 
   Future<void> _restoreNotes() async {
-    final name = _prefs.getString('notes_name');
-    if (name == null) return;
-    final f = await _notesStore();
-    if (!await f.exists()) return;
-    try {
-      final parsed = await PptxNotes.parse(await f.readAsBytes());
-      _localDeck = parsed.slides;
-      _localTotal = parsed.total;
-      _localName = name;
-      _localSlide = (_prefs.getInt('notes_slide') ?? 0).clamp(0, parsed.slides.isEmpty ? 0 : parsed.slides.length - 1);
-    } catch (_) {
-      _localDeck = null;
+    // Versión anterior: un solo archivo de notas para todos los modos → pasa a "Control Bluetooth"
+    final oldName = _prefs.getString('notes_name');
+    if (oldName != null) {
+      final dir = await getApplicationSupportDirectory();
+      final old = File('${dir.path}/notas.pptx');
+      try {
+        if (await old.exists()) await old.rename((await _notesStore(Mode.bluetooth)).path);
+        await _prefs.setString('notes_name_${Mode.bluetooth.name}', oldName);
+        await _prefs.setInt('notes_slide_${Mode.bluetooth.name}', _prefs.getInt('notes_slide') ?? 0);
+      } catch (_) {}
+      await _prefs.remove('notes_name');
+      await _prefs.remove('notes_slide');
+    }
+    for (final s in _slots.values) {
+      final name = _prefs.getString('notes_name_${s.mode.name}');
+      if (name == null) continue;
+      final f = await _notesStore(s.mode);
+      if (!await f.exists()) continue;
+      try {
+        final parsed = await PptxNotes.parse(await f.readAsBytes());
+        s.deck = parsed.slides;
+        s.total = parsed.total;
+        s.name = name;
+        s.slide = (_prefs.getInt('notes_slide_${s.mode.name}') ?? 0)
+            .clamp(0, parsed.slides.isEmpty ? 0 : parsed.slides.length - 1);
+      } catch (_) {
+        s.deck = null;
+      }
     }
   }
 
-  /// Carga las notas de un .pptx ya leído. Lanza FormatException si no es válido.
-  Future<void> _loadNotes(Uint8List bytes, String name, {required bool quiet}) async {
+  /// Carga las notas de un .pptx/.odp ya leído en el modo [into] (por defecto, el actual).
+  /// Lanza FormatException si no es válido.
+  Future<void> _loadNotes(Uint8List bytes, String name, {required bool quiet, Mode? into}) async {
+    final s = _slots[into ?? mode]!;
     final parsed = await PptxNotes.parse(bytes);
     if (parsed.slides.isEmpty) throw FormatException(t('La presentación no tiene diapositivas.', 'The presentation has no slides.'));
-    await (await _notesStore()).writeAsBytes(bytes, flush: true);
-    await _prefs.setString('notes_name', name);
-    _localDeck = parsed.slides;
-    _localTotal = parsed.total;
-    _localName = name;
-    _localSlide = 0;
-    _localStep = 0;
+    await (await _notesStore(s.mode)).writeAsBytes(bytes, flush: true);
+    await _prefs.setString('notes_name_${s.mode.name}', name);
+    s.deck = parsed.slides;
+    s.total = parsed.total;
+    s.name = name;
+    s.slide = 0;
+    s.step = 0;
     if (!quiet && parsed.slides.every((s) => s.notes.trim().isEmpty)) {
       _nudge(t('Esta presentación no tiene notas del presentador', 'This presentation has no speaker notes'));
     }
@@ -653,13 +674,17 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
-  Future<void> clearNotes() async {
-    _localDeck = null;
-    _localName = null;
-    _localTotal = 0;
-    await _prefs.remove('notes_name');
+  /// Quita las notas del modo [of] (por defecto, el actual).
+  Future<void> clearNotes({Mode? of}) async {
+    final s = _slots[of ?? mode]!;
+    s.deck = null;
+    s.name = null;
+    s.total = 0;
+    s.slide = 0;
+    s.step = 0;
+    await _prefs.remove('notes_name_${s.mode.name}');
     try {
-      await (await _notesStore()).delete();
+      await (await _notesStore(s.mode)).delete();
     } catch (_) {}
     notifyListeners();
   }
@@ -673,7 +698,10 @@ class RemoteController extends ChangeNotifier {
 
   @override
   void notifyListeners() {
-    if (_localDeck != null && _ready) _prefs.setInt('notes_slide', _localSlide);
+    if (_ready) {
+      final s = _slot;
+      if (s.deck != null) _prefs.setInt('notes_slide_${s.mode.name}', s.slide);
+    }
     super.notifyListeners();
   }
 
@@ -792,4 +820,15 @@ class RemoteController extends ChangeNotifier {
   }
 
   bool get canSend => status.conn == Conn.on;
+}
+
+/// Notas elegidas en el teléfono para un modo.
+class _NotesSlot {
+  _NotesSlot(this.mode);
+  final Mode mode;
+  List<SlideInfo>? deck;
+  String? name;
+  int total = 0; // diapositivas del archivo contando las ocultas
+  int slide = 0;
+  int step = 0;
 }

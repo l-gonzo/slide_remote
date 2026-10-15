@@ -87,6 +87,7 @@ En una tablet (Android o iPad) no se puede instalar el receptor: los sistemas no
 
 - **Botón ⤢** (esquina del recuadro de notas): las notas ocupan casi toda la pantalla y los botones se hacen compactos. Se regresa con el mismo botón o con “atrás”.
 - **Sincronía:** en Navegador es exacta. En Bluetooth y WiFi el teléfono **cuenta las pulsaciones**, incluidas las animaciones “al hacer clic” (igual que PowerPoint). Si se desfasa —por ejemplo, si cambiaste de diapositiva con el mouse— corrígelo con **− / +** en el panel (no mueve nada en la PC).
+- **Cada modo tiene sus propias notas:** las que eliges en “Control Bluetooth” no aparecen en “Transmitir desde móvil”, y viceversa. En “Transmitir desde PC” mandan las de la app de escritorio (si no hay, las que elijas en el teléfono para ese modo).
 - Las diapositivas ocultas se saltan.
 
 **Formatos con notas**

@@ -836,7 +836,7 @@ class _RemotePageState extends State<RemotePage> {
               const SizedBox(height: 10),
               _languagePicker(),
               const SizedBox(height: 14),
-              Caption(t('Notas del presentador', 'Speaker notes')),
+              Caption('${t('Notas del presentador', 'Speaker notes')} · ${_modeName(c.mode)}'),
               if (c.deck == null)
                 PillButton(t('Elegir presentación (.pptx, .odp)', 'Choose presentation (.pptx, .odp)'), icon: Icons.sticky_note_2_outlined, onTap: () {
                   Navigator.pop(ctx);
@@ -906,6 +906,13 @@ class _RemotePageState extends State<RemotePage> {
           },
         ),
       ]);
+
+  /// Nombre del modo en una línea (cada modo tiene sus propias notas).
+  static String _modeName(Mode m) => switch (m) {
+        Mode.bluetooth => t('Control Bluetooth', 'Bluetooth control'),
+        Mode.wifi => t('Transmitir desde PC', 'Stream from PC'),
+        Mode.browser => t('Transmitir desde móvil', 'Stream from phone'),
+      };
 
   Widget _switch(String title, String sub, bool value, ValueChanged<bool> onChanged) => SwitchListTile(
         contentPadding: EdgeInsets.zero,
