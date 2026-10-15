@@ -64,4 +64,7 @@ abstract final class Udp {
   /// La PC avisa qué notas tiene: versión (0 = ninguna) y puerto HTTP para pedirlas
   /// en GET /notes. Se manda junto con cada PONG; el teléfono solo descarga si cambió.
   static String notes(int version, int port) => '$prefix NOTES $version $port';
+
+  /// "Proyectar en esta PC": página actual y total (0 0 = no está proyectando).
+  static String page(int page, int total) => '$prefix PAGE $page $total';
 }

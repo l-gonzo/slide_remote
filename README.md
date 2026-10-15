@@ -36,6 +36,7 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Volumen + / Volumen −** = siguiente / anterior (se puede invertir). También hay botones grandes en pantalla.
 - **Tres modos:** Bluetooth, WiFi y Navegador (ver abajo). Al salir de la app suelta el volumen y la conexión; al volver se **reconecta sola**.
 - **Notas del presentador** en el teléfono, con título de la diapositiva, aviso de animaciones y “Sigue: …”. Botón para **expandir las notas** a casi toda la pantalla (los botones de cambiar diapositiva se hacen compactos).
+- **Proyectar desde la app de escritorio (modo WiFi), con dibujo:** en la app de escritorio elige tu presentación y toca **Proyectar en esta PC** (o toca ✎ en el teléfono y luego *Proyectar en la PC*). Se abre en el navegador de la PC (presiona *Pantalla completa*) y se controla desde el teléfono: cambias de diapositiva sin simular teclas, las notas van sincronizadas con la página exacta y lo que dibujas en el teléfono (pluma, marcatextos, láser) aparece encima al instante. Funciona igual en Windows, macOS y Linux (también con Wayland), sin permisos especiales. Para .pptx/.odp/.ppt hace falta LibreOffice en la PC (en Windows también sirve PowerPoint); un PDF se proyecta tal cual.
 - **Varias pantallas sincronizadas (modo Navegador):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
 - **Cronómetro** de la presentación, solo visible en el teléfono (arriba a la derecha): toca para iniciar o pausar; en pausa aparece ↺ para reiniciarlo. Sigue contando aunque salgas de la app o bloquees el teléfono.
 - **Dibujar sobre la diapositiva (modo Navegador):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
@@ -424,7 +425,7 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 | Puerto | Uso |
 |---|---|
 | UDP 50505 | Comandos del teléfono a la app de escritorio |
-| TCP 50506 | Notas de la PC al teléfono (solo responde a teléfonos que ya se conectaron) |
+| TCP 50506 | Notas de la PC al teléfono, “Proyectar en esta PC” (página en `http://127.0.0.1:50506/`) y dibujo (WebSocket `/phone`); solo responde a teléfonos que ya se conectaron y a esta misma PC |
 | TCP 8080 (o el siguiente libre) | Página del modo Navegador, servida por el teléfono |
 
 ## Limitaciones
@@ -465,6 +466,7 @@ lib/
   mobile/wifi_client.dart         descubrimiento mDNS + UDP
   mobile/browser_server.dart      servidor web + WebSocket del modo Navegador
   mobile/draw_page.dart           vista de dibujo (diapositiva en el teléfono)
+  mobile/draw_source.dart         de dónde sale la diapositiva: PDF del teléfono (Navegador) o de la PC (WiFi)
   mobile/ink.dart                 trazos y puntero láser, enviados al navegador
   mobile/talk_timer.dart          cronómetro (guarda la hora de inicio)
   mobile/timer_chip.dart          botón del cronómetro
@@ -473,6 +475,8 @@ lib/
   desktop/receiver_controller.dart  UDP + mDNS + Bluetooth LE
   desktop/notes_host.dart         notas para el teléfono (HTTP), conversión con LibreOffice
   desktop/key_injector.dart       teclas: SendInput / CGEventPost / uinput (dart:ffi)
+  desktop/present_host.dart       “Proyectar en esta PC”: presentación en el navegador + dibujo
+  desktop/office.dart             conversión con LibreOffice (o PowerPoint en Windows)
 packages/slide_native/            plugin propio
   android/…/BtHidKeyboard.java    teclado Bluetooth HID
   android/…/SlideNativePlugin.java  volumen, permisos

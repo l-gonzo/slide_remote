@@ -181,7 +181,8 @@ class _RemotePageState extends State<RemotePage> {
       _detailsOpen = null; // al conectar/desconectar, volver al comportamiento automático
     }
     final open = _detailsVisible;
-    final canDraw = c.mode == Mode.browser && c.browser.hasPdf && !c.converting;
+    final canDraw = (c.mode == Mode.browser && c.browser.hasPdf && !c.converting) ||
+        (c.mode == Mode.wifi && c.pcDrawUri != null);
     return Material(
       color: Pal.card,
       shape: RoundedRectangleBorder(
@@ -597,7 +598,14 @@ class _RemotePageState extends State<RemotePage> {
   }
 
   void _openDraw() {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DrawPage(c: c)));
+    final wifiUri = c.mode == Mode.wifi ? c.pcDrawUri : null;
+    if (c.mode == Mode.wifi && wifiUri == null) {
+      _showNudge(t('Conéctate a la PC por WiFi primero', 'Connect to the computer over WiFi first'));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => wifiUri != null ? DrawPage.wifi(c: c, uri: wifiUri) : DrawPage(c: c),
+    ));
   }
 
   // ================================================================ botones grandes

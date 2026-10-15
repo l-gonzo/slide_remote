@@ -4,15 +4,19 @@ import 'package:flutter/services.dart';
 import '../common/i18n.dart';
 import '../common/theme.dart';
 import 'ink.dart';
-import 'native_bridge.dart';
+import 'draw_source.dart';
 import 'remote_controller.dart';
 import 'timer_chip.dart';
 
-/// Modo Navegador → "Dibujar": la diapositiva actual en el teléfono. Lo que dibujes (pluma,
-/// marcatextos o puntero láser) aparece al instante sobre la presentación en el navegador de la PC.
+/// "Dibujar": la diapositiva actual en el teléfono. Lo que dibujes (pluma, marcatextos o puntero
+/// láser) aparece al instante sobre la presentación: en el navegador de la PC (modo Navegador) o
+/// encima de PowerPoint/Impress gracias a la app de escritorio (modo WiFi).
 class DrawPage extends StatefulWidget {
-  const DrawPage({super.key, required this.c});
+  const DrawPage({super.key, required this.c}) : wifi = false, wifiUri = null;
+  const DrawPage.wifi({super.key, required this.c, required Uri uri}) : wifi = true, wifiUri = uri;
   final RemoteController c;
+  final bool wifi;
+  final Uri? wifiUri;
 
   @override
   State<DrawPage> createState() => _DrawPageState();
@@ -20,7 +24,7 @@ class DrawPage extends StatefulWidget {
 
 class _DrawPageState extends State<DrawPage> {
   RemoteController get c => widget.c;
-  InkBoard get ink => c.browser.ink;
+  InkBoard get ink => src.ink;
 
   static const _colors = [
     Color(0xFFFF3B30), // rojo
@@ -37,18 +41,13 @@ class _DrawPageState extends State<DrawPage> {
   bool _landscape = false;
 
 
-  final Map<int, PdfPageImage> _images = {};
-  final Set<int> _loading = {};
-  String? _pdfPath;
-  bool _failed = false;
+  late final DrawSource src = widget.wifi ? WifiDrawSource(c, widget.wifiUri!) : BrowserDrawSource(c);
 
-  /// La página la lleva el teléfono (la misma en todos los navegadores conectados).
-  int get _page => c.browser.page < 1 ? 1 : c.browser.page;
-  int get _total => c.browser.total;
+  int get _page => src.page;
 
   @override
   void dispose() {
-    ink.end();
+    src.close();
     // La app del teléfono va siempre en vertical
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
@@ -60,56 +59,6 @@ class _DrawPageState extends State<DrawPage> {
         _landscape ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp]);
   }
 
-  // ---------------------------------------------------------------- imágenes de las páginas
-
-  void _ensureImages(int page, double logicalWidth) {
-    final path = c.browser.pdfFile?.path;
-    if (path == null) return;
-    if (path != _pdfPath) {
-      // Cambió el PDF: tirar las imágenes viejas
-      _pdfPath = path;
-      _images.clear();
-      _failed = false;
-    }
-    final px = (logicalWidth * MediaQuery.devicePixelRatioOf(context)).clamp(480, 1800).round();
-    for (final p in [page, page + 1]) {
-      if (p < 1 || (_total > 0 && p > _total)) continue;
-      if (_images.containsKey(p) || _loading.contains(p)) continue;
-      _loading.add(p);
-      NativeBridge.renderPdfPage(path, p, px).then((img) {
-        _loading.remove(p);
-        if (!mounted || path != _pdfPath) return;
-        setState(() {
-          if (img == null) {
-            _failed = p == page;
-            return;
-          }
-          _images[p] = img;
-          if (img.pages > 0) c.browser.setTotalIfUnknown(img.pages);
-          // Guardar pocas en memoria
-          if (_images.length > 6) {
-            final far = _images.keys.toList()..sort((a, b) => (a - _page).abs().compareTo((b - _page).abs()));
-            for (final k in far.skip(6)) {
-              _images.remove(k);
-            }
-          }
-        });
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------- navegación
-
-  void _go(bool forward) {
-    if (c.browser.viewers > 0) {
-      c.send(forward: forward); // igual que los botones de volumen
-    } else {
-      // Sin navegador conectado también se puede recorrer y dibujar
-      HapticFeedback.selectionClick();
-      c.browser.go(forward ? 1 : -1);
-    }
-  }
-
   // ---------------------------------------------------------------- interfaz
 
   @override
@@ -118,7 +67,7 @@ class _DrawPageState extends State<DrawPage> {
       backgroundColor: Pal.bg,
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: Listenable.merge([c, ink, I18n.current]),
+          listenable: Listenable.merge([c, src, I18n.current]),
           builder: (context, _) => OrientationBuilder(
             builder: (context, o) => o == Orientation.landscape ? _landscapeLayout() : _portraitLayout(),
           ),
@@ -164,7 +113,7 @@ class _DrawPageState extends State<DrawPage> {
       );
 
   Widget _topBar({bool compact = false}) {
-    final total = _total;
+    final label = src.pageLabel;
     return Row(children: [
       IconButton(
         onPressed: () => Navigator.of(context).maybePop(),
@@ -172,16 +121,20 @@ class _DrawPageState extends State<DrawPage> {
         tooltip: t('Volver', 'Back'),
       ),
       const SizedBox(width: 4),
-      Text(
-        total > 0 ? '$_page / $total' : '$_page',
-        style: monoStyle.copyWith(color: Pal.accent, fontWeight: FontWeight.w700),
-      ),
+      if (label != null)
+        Text(label, style: monoStyle.copyWith(color: Pal.accent, fontWeight: FontWeight.w700)),
       const Spacer(),
       if (!compact) ...[TimerChip(c.timer), const SizedBox(width: 4)],
-      if (c.browser.viewers == 0)
+      if (!src.connected)
         Tooltip(
-          message: t('Abre la dirección en el navegador de la PC', 'Open the address in the computer’s browser'),
+          message: src.offlineHint ?? '',
           child: const Icon(Icons.cloud_off_rounded, size: 18, color: Pal.busy),
+        ),
+      if (src.canRefresh && !compact)
+        IconButton(
+          onPressed: src.refresh,
+          icon: const Icon(Icons.refresh_rounded),
+          tooltip: t('Actualizar imagen', 'Refresh image'),
         ),
       IconButton(
         onPressed: _toggleRotation,
@@ -193,7 +146,7 @@ class _DrawPageState extends State<DrawPage> {
 
   Widget _slide() => LayoutBuilder(builder: (context, box) {
         final page = _page;
-        final img = _images[page];
+        final img = src.image(page);
         final aspect = img != null ? img.width / img.height : 16 / 9;
         // Tamaño que cabe en el espacio disponible
         var w = box.maxWidth;
@@ -202,7 +155,7 @@ class _DrawPageState extends State<DrawPage> {
           h = box.maxHeight;
           w = h * aspect;
         }
-        _ensureImages(page, w);
+        src.request(page, (w * MediaQuery.devicePixelRatioOf(context)).clamp(480, 1800).round());
         return Center(
           child: SizedBox(
             width: w,
@@ -216,10 +169,25 @@ class _DrawPageState extends State<DrawPage> {
                   ColoredBox(
                     color: Pal.card,
                     child: Center(
-                      child: _failed
+                      child: src.failed(page)
                           ? Text(t('No se pudo mostrar la diapositiva', 'Could not show the slide'),
                               style: const TextStyle(color: Pal.muted))
-                          : const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                          : !src.connected && widget.wifi
+                              ? Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                    Flexible(
+                                      child: Text(src.offlineHint ?? '',
+                                          textAlign: TextAlign.center, style: const TextStyle(color: Pal.muted, height: 1.35)),
+                                    ),
+                                    if (src case final WifiDrawSource w when w.canStart) ...[
+                                      const SizedBox(height: 10),
+                                      PillButton(t('Proyectar en la PC', 'Present on the computer'),
+                                          primary: true, dense: true, icon: Icons.cast_rounded, onTap: w.startPresenting),
+                                    ],
+                                  ]),
+                                )
+                              : const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
                   ),
                 GestureDetector(
@@ -354,7 +322,7 @@ class _DrawPageState extends State<DrawPage> {
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => _go(forward),
+            onTap: () => src.go(forward),
             child: Center(
               child: FittedBox(
                 fit: BoxFit.scaleDown,

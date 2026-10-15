@@ -46,6 +46,9 @@ class WifiClient extends ChangeNotifier {
   /// La PC anunció sus notas: (versión, puerto HTTP). Versión 0 = la PC no tiene notas.
   void Function(int version, int port)? onNotes;
 
+  /// La PC proyecta con Slide Remote: (página, total). 0 0 = no está proyectando.
+  void Function(int page, int total)? onPage;
+
   /// Dirección de la PC elegida (para pedirle las notas).
   InternetAddress? get targetAddress => _targetAddress;
 
@@ -112,6 +115,13 @@ class WifiClient extends ChangeNotifier {
         if (d == null) return;
         final msg = ascii.decode(d.data, allowInvalid: true).trim();
         if (_targetAddress == null || d.address.address != _targetAddress!.address) return;
+        if (msg.startsWith('${Udp.prefix} PAGE ')) {
+          final p = msg.split(' ');
+          final page = p.length > 2 ? int.tryParse(p[2]) : null;
+          final total = p.length > 3 ? int.tryParse(p[3]) : null;
+          if (page != null && total != null) onPage?.call(page, total);
+          return;
+        }
         if (msg.startsWith('${Udp.prefix} NOTES ')) {
           final p = msg.split(' ');
           final v = p.length > 2 ? int.tryParse(p[2]) : null;

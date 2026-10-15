@@ -8,10 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
+import 'office.dart';
 
 /// Lo que se puede elegir en la app de escritorio. Los que no están en [kNotesExtensions]
-/// necesitan LibreOffice instalado en la PC.
-const kDesktopNotesExtensions = [...kNotesExtensions, 'ppt', 'pps', 'pot', 'key', 'dps'];
+/// necesitan LibreOffice instalado en la PC. Un PDF sirve para proyectar, pero no trae notas.
+const kDesktopNotesExtensions = [...kNotesExtensions, 'ppt', 'pps', 'pot', 'key', 'dps', 'pdf'];
 
 /// App de escritorio: lee las notas del .pptx que está en la PC y se las sirve al teléfono
 /// por WiFi (`GET http://<pc>:<puerto>/notes`). Así el archivo no tiene que estar en el teléfono.
@@ -20,6 +21,13 @@ class NotesHost extends ChangeNotifier {
 
   /// Solo se contesta a teléfonos que ya hablaron con esta PC por UDP (no a cualquiera en la red).
   final bool Function(InternetAddress) isAllowed;
+
+  /// Otras rutas del servidor (proyectar desde la app). Devuelve true si atendió la petición
+  /// (y ya respondió). [phone] = viene de un teléfono conocido; [local] = de esta misma PC.
+  Future<bool> Function(HttpRequest req, {required bool phone, required bool local})? extraRoutes;
+
+  /// true si el archivo es un PDF (se puede proyectar, pero no trae notas).
+  bool get isPdf => path?.toLowerCase().endsWith('.pdf') ?? false;
 
   String? path;
   String? name;
@@ -76,7 +84,11 @@ class NotesHost extends ChangeNotifier {
     final res = req.response;
     try {
       final from = req.connectionInfo?.remoteAddress;
-      if (from == null || !isAllowed(from)) {
+      final phone = from != null && isAllowed(from);
+      final local = from?.isLoopback ?? false;
+      final extra = extraRoutes;
+      if (extra != null && await extra(req, phone: phone, local: local)) return;
+      if (!phone) {
         res.statusCode = HttpStatus.forbidden;
       } else if (req.method == 'GET' && req.uri.path == '/notes') {
         res.headers.contentType = ContentType.json;
@@ -106,6 +118,17 @@ class NotesHost extends ChangeNotifier {
       final f = File(filePath);
       final base = _baseName(filePath);
       final ext = base.contains('.') ? base.split('.').last.toLowerCase() : '';
+      if (ext == 'pdf') {
+        // Sin notas: solo para proyectar
+        path = filePath;
+        name = base;
+        deck = null;
+        _mtime = await f.lastModified();
+        version = 0;
+        _json = '{"version":0}';
+        await _prefs?.setString('desktop_notes_path', filePath);
+        return;
+      }
       final parsed = kNotesExtensions.contains(ext)
           ? await PptxNotes.parse(await f.readAsBytes())
           : await _parseWithLibreOffice(f, ext);
@@ -134,62 +157,15 @@ class NotesHost extends ChangeNotifier {
   /// Formatos que no se leen directo (.ppt viejo, Keynote…): si LibreOffice está instalado en
   /// la PC, se convierten a .odp en segundo plano y se leen las notas de ahí.
   static Future<PptxDeck> _parseWithLibreOffice(File f, String ext) async {
-    final soffice = await _findSoffice();
-    if (soffice == null) {
-      throw FormatException(t('Para leer .$ext instala LibreOffice en esta PC, '
-          'o guarda la presentación como .pptx u .odp.',
-          'To read .$ext install LibreOffice on this computer, or save the presentation as .pptx or .odp.'));
-    }
     final tmp = await Directory.systemTemp.createTemp('slideremote');
     try {
-      // Perfil propio: así funciona aunque LibreOffice ya esté abierto
-      final profile = Uri.directory('${tmp.path}/perfil').toString();
-      final r = await Process.run(soffice, [
-        '-env:UserInstallation=$profile',
-        '--headless',
-        '--norestore',
-        '--convert-to',
-        'odp',
-        '--outdir',
-        tmp.path,
-        f.path,
-      ]).timeout(const Duration(minutes: 2));
-      final out = tmp
-          .listSync()
-          .whereType<File>()
-          .where((x) => x.path.toLowerCase().endsWith('.odp'))
-          .firstOrNull;
-      if (out == null) {
-        throw FormatException('${t('LibreOffice no pudo abrir el archivo', 'LibreOffice could not open the file')} .$ext (${'${r.stderr}'.trim()})');
-      }
+      final out = await Office.convert(f, 'odp', tmp);
       return await PptxNotes.parse(await out.readAsBytes());
     } finally {
       try {
         await tmp.delete(recursive: true);
       } catch (_) {}
     }
-  }
-
-  static Future<String?> _findSoffice() async {
-    final candidates = <String>[
-      if (Platform.isMacOS) '/Applications/LibreOffice.app/Contents/MacOS/soffice',
-      if (Platform.isWindows) ...[
-        r'C:\Program Files\LibreOffice\program\soffice.exe',
-        r'C:\Program Files (x86)\LibreOffice\program\soffice.exe',
-      ],
-      if (Platform.isLinux) ...['/usr/bin/soffice', '/usr/bin/libreoffice', '/snap/bin/libreoffice',
-        '/var/lib/flatpak/exports/bin/org.libreoffice.LibreOffice'],
-    ];
-    for (final c in candidates) {
-      if (await File(c).exists()) return c;
-    }
-    // En el PATH
-    try {
-      final r = await Process.run(Platform.isWindows ? 'where' : 'which', ['soffice']);
-      final p = '${r.stdout}'.trim().split('\n').first.trim();
-      if (r.exitCode == 0 && p.isNotEmpty) return p;
-    } catch (_) {}
-    return null;
   }
 
   void clear() {

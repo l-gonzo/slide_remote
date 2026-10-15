@@ -71,16 +71,22 @@
       connecting: 'Conectando…', connectingPhone: 'Conectando con el teléfono…',
       pickPdf: 'Elige una presentación en la app del teléfono.', cantOpen: 'No se pudo abrir el PDF.',
       connected: 'Teléfono conectado', reconnecting: 'Reconectando con el teléfono…', fullscreen: 'Pantalla completa',
+      pickPdfPc: 'Elige la presentación en Slide Remote para escritorio y toca “Proyectar en esta PC”.',
+      connectedPc: 'Conectado', reconnectingPc: 'Reconectando…',
     },
     en: {
       connecting: 'Connecting…', connectingPhone: 'Connecting to the phone…',
       pickPdf: 'Choose a presentation in the phone app.', cantOpen: 'Could not open the PDF.',
       connected: 'Phone connected', reconnecting: 'Reconnecting to the phone…', fullscreen: 'Full screen',
+      pickPdfPc: 'Choose the presentation in Slide Remote for desktop and click “Present on this computer”.',
+      connectedPc: 'Connected', reconnectingPc: 'Reconnecting…',
     },
   };
   let lang = document.documentElement.lang === 'es' ? 'es' : 'en';
   let hudKey = 'connecting', emptyKey = 'connectingPhone';
-  const T = (k) => (TXT[lang] || TXT.en)[k] || k;
+  // Servida por la app de escritorio ("Proyectar en esta PC") en vez del teléfono
+  let fromPc = false;
+  const T = (k) => { const d = TXT[lang] || TXT.en; return (fromPc && d[k + 'Pc']) || d[k] || k; };
   function applyLang() {
     document.documentElement.lang = lang;
     st.textContent = T(hudKey);
@@ -239,6 +245,7 @@
       else if (msg.t === 'lang') { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
       else if (msg.t === 'hello') {
         if (msg.lang && msg.lang !== lang) { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
+        if (msg.src === 'pc' && !fromPc) { fromPc = true; applyLang(); }
         if (msg.page) setPage(msg.page);
         if (msg.hasPdf && !doc) load();
         else if (!msg.hasPdf) showEmpty('pickPdf');

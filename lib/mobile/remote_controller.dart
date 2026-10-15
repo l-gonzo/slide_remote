@@ -14,6 +14,7 @@ import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'browser_server.dart';
+import 'ink.dart';
 import 'native_bridge.dart';
 import 'talk_timer.dart';
 import 'wifi_client.dart';
@@ -28,6 +29,7 @@ class RemoteController extends ChangeNotifier {
   RemoteController() {
     wifi.addListener(notifyListeners);
     wifi.onNotes = _onPcNotes;
+    wifi.onPage = _onPcPage;
     browser.addListener(_onBrowserChanged);
   }
 
@@ -36,6 +38,21 @@ class RemoteController extends ChangeNotifier {
 
   /// Cronómetro de la presentación (solo en el teléfono).
   final timer = TalkTimer();
+
+  /// Dibujos del modo WiFi (se mandan a la app de escritorio mientras la vista de dibujo está abierta).
+  late final InkBoard wifiInk = InkBoard((m) => wifiInkSink?.call(m));
+  void Function(Map<String, Object?>)? wifiInkSink;
+
+  /// Puerto de la app de escritorio para notas y dibujo (lo anuncia por WiFi).
+  int? _pcPort;
+
+  /// Dirección del WebSocket de dibujo de la PC, si la app de escritorio la anunció.
+  Uri? get pcDrawUri {
+    final host = wifi.targetAddress;
+    final port = _pcPort;
+    if (host == null || port == null || !wifi.online) return null;
+    return Uri(scheme: 'ws', host: host.address, port: port, path: '/phone');
+  }
 
   final bool isAndroid = Platform.isAndroid;
   final bool isIOS = Platform.isIOS;
@@ -113,7 +130,33 @@ class RemoteController extends ChangeNotifier {
   SlideInfo? get nextSlide => (deck == null || slide + 1 >= deck!.length) ? null : deck![slide + 1];
 
   /// En el modo Navegador la página la reporta el navegador; en los demás se cuenta.
-  bool get slideIsExact => mode == Mode.browser && browser.hasPdf;
+  bool get slideIsExact => (mode == Mode.browser && browser.hasPdf) || pcPresenting;
+
+  // ---- "Proyectar en esta PC" (modo WiFi): la PC dice en qué página va
+  int _shownPage = 0;
+  int _shownTotal = 0;
+  DateTime _shownPageAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// La app de escritorio está proyectando (avisa con cada respuesta, cada ~2 s).
+  bool get pcPresenting =>
+      mode == Mode.wifi && _shownPage > 0 && DateTime.now().difference(_shownPageAt) < const Duration(seconds: 6);
+
+  void _onPcPage(int page, int total) {
+    final was = pcPresenting;
+    _shownPage = page;
+    _shownTotal = total;
+    _shownPageAt = DateTime.now();
+    if (page > 0 && deck != null) {
+      final i = _slideForPage(page, total);
+      if (i != null && (i != slide || step != 0)) {
+        slide = i;
+        step = 0;
+        notifyListeners();
+        return;
+      }
+    }
+    if (was != pcPresenting) notifyListeners();
+  }
 
   // ---- avisos para la UI
   final _nudges = StreamController<String>.broadcast();
@@ -243,7 +286,8 @@ class RemoteController extends ChangeNotifier {
       case Mode.wifi:
         if (wifi.target == null) return _nudge(t('Elige tu PC', 'Choose your computer'));
         final sent = wifi.send(cmd);
-        if (sent) _advance(forward);
+        // Si la PC proyecta, ella dice la página exacta; si no, se cuentan las pulsaciones
+        if (sent && !pcPresenting) _advance(forward);
         if (!sent) {
           _nudge(t('No se pudo enviar', 'Could not send'));
         } else if (!wifi.online) {
@@ -532,7 +576,7 @@ class RemoteController extends ChangeNotifier {
   void _onBrowserChanged() {
     final page = browser.page;
     if (page != _lastBrowserPage && page > 0) {
-      final i = _slideForPage(page);
+      final i = _slideForPage(page, browser.total);
       if (i != null) {
         slide = i;
         step = 0;
@@ -544,10 +588,10 @@ class RemoteController extends ChangeNotifier {
 
   /// Si el PDF incluye las diapositivas ocultas (tiene tantas páginas como el archivo),
   /// se busca por número; si no, la página N es la N-ésima diapositiva visible.
-  int? _slideForPage(int page) {
+  int? _slideForPage(int page, int pdfPages) {
     final d = deck;
     if (d == null || d.isEmpty) return null;
-    if (browser.total == _deckTotal && _deckTotal != d.length) {
+    if (pdfPages == _deckTotal && _deckTotal != d.length) {
       final i = d.indexWhere((s) => s.number == page);
       return i >= 0 ? i : null; // diapositiva oculta: se queda la anterior
     }
@@ -639,6 +683,10 @@ class RemoteController extends ChangeNotifier {
   void _onPcNotes(int version, int port) {
     final host = wifi.targetAddress;
     if (host == null) return;
+    if (_pcPort != port) {
+      _pcPort = port;
+      notifyListeners();
+    }
     if (_pcFor != null && _pcFor != host.address) _dropPcNotes();
     if (version == 0) {
       if (_pcDeck != null) {
@@ -721,6 +769,10 @@ class RemoteController extends ChangeNotifier {
       case Mode.wifi:
         final pc = wifi.target;
         if (pc == null) return ConnView(Conn.off, t('Sin PC', 'No computer'), t('Elige tu PC en la lista', 'Choose your computer in the list'));
+        if (wifi.online && pcPresenting) {
+          return ConnView(Conn.on, t('Proyectando en la PC', 'Presenting on the computer'),
+              _shownTotal > 0 ? t('Diapositiva $_shownPage de $_shownTotal', 'Slide $_shownPage of $_shownTotal') : pc.name);
+        }
         if (wifi.online) {
           return ConnView(Conn.on, t('Conectado', 'Connected'), '${pc.name}${wifi.latencyMs != null ? ' · ${wifi.latencyMs} ms' : ''}');
         }

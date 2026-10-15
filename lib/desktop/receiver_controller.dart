@@ -10,6 +10,7 @@ import '../common/i18n.dart';
 import '../common/protocol.dart';
 import 'key_injector.dart';
 import 'notes_host.dart';
+import 'present_host.dart';
 
 enum BleStatus { unknown, off, unauthorized, unsupported, searching, connecting, connected }
 
@@ -27,6 +28,13 @@ class ReceiverController extends ChangeNotifier {
   ReceiverController() {
     notes = NotesHost(isAllowed: _isKnownPhone);
     notes.addListener(_notify);
+    present = PresentHost(port: () => notes.port);
+    notes.extraRoutes = present.handle;
+    present.addListener(_notify);
+    present.onPageChanged = _sendPageToPhone;
+    present.onPhoneStart = startPresenting;
+    present.lang = I18n.current.value;
+    I18n.current.addListener(_langChanged);
   }
 
   final KeyInjector injector = KeyInjector.create();
@@ -34,6 +42,13 @@ class ReceiverController extends ChangeNotifier {
 
   /// Notas del .pptx que está en la PC; se mandan al teléfono por WiFi.
   late final NotesHost notes;
+
+  /// "Proyectar en esta PC": la presentación en el navegador de la PC, controlada por el teléfono.
+  late final PresentHost present;
+
+  /// Último teléfono que habló por UDP (para avisarle al instante del cambio de página).
+  InternetAddress? _phoneAddr;
+  int _phonePort = 0;
 
   /// Teléfonos que hablaron por UDP hace poco: los únicos que pueden pedir las notas.
   final Map<String, DateTime> _phones = {};
@@ -95,6 +110,9 @@ class ReceiverController extends ChangeNotifier {
     _bleDevice?.disconnect();
     notes.removeListener(_notify);
     notes.dispose();
+    present.removeListener(_notify);
+    I18n.current.removeListener(_langChanged);
+    present.dispose();
     injector.dispose();
     super.dispose();
   }
@@ -111,7 +129,12 @@ class ReceiverController extends ChangeNotifier {
 
   void _press(int cmd, String source) {
     if (!Cmd.isValid(cmd)) return;
-    injector.press(cmd);
+    if (present.active) {
+      // Proyectando desde la app: cambiar la página directamente (sin simular teclas)
+      present.go(Cmd.isForward(cmd) ? 1 : -1);
+    } else {
+      injector.press(cmd);
+    }
     last = Received(cmd, source, DateTime.now());
     count++;
     _notify();
@@ -162,10 +185,28 @@ class ReceiverController extends ChangeNotifier {
       case 'PING':
         s.send(ascii.encode(Udp.pong(hostName)), d.address, d.port);
         if (notes.port > 0) s.send(ascii.encode(Udp.notes(notes.version, notes.port)), d.address, d.port);
+        s.send(ascii.encode(present.active ? Udp.page(present.page, present.total) : Udp.page(0, 0)), d.address, d.port);
+        _phoneAddr = d.address;
+        _phonePort = d.port;
         _notify();
       case 'C':
         if (parts.length >= 3) _press(int.tryParse(parts[2]) ?? 0, 'WiFi');
     }
+  }
+
+  void _sendPageToPhone() {
+    final a = _phoneAddr;
+    if (a == null || _udp == null) return;
+    _udp!.send(ascii.encode(Udp.page(present.page, present.total)), a, _phonePort);
+  }
+
+  void _langChanged() => present.setLanguage(I18n.current.value);
+
+  /// Proyectar la presentación elegida en "Notas en el teléfono".
+  Future<void> startPresenting() async {
+    final p = notes.path;
+    if (p == null) return;
+    await present.start(p, notes.name ?? 'presentación');
   }
 
   bool _isKnownPhone(InternetAddress a) {
