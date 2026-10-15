@@ -36,6 +36,8 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Volumen + / Volumen −** = siguiente / anterior (se puede invertir). También hay botones grandes en pantalla.
 - **Tres modos:** Bluetooth, WiFi y Navegador (ver abajo). Al salir de la app suelta el volumen y la conexión; al volver se **reconecta sola**.
 - **Notas del presentador** en el teléfono, con título de la diapositiva, aviso de animaciones y “Sigue: …”. Botón para **expandir las notas** a casi toda la pantalla (los botones de cambiar diapositiva se hacen compactos).
+- **Varias pantallas sincronizadas (modo Navegador):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
+- **Cronómetro** de la presentación, solo visible en el teléfono (arriba a la derecha): toca para iniciar o pausar; en pausa aparece ↺ para reiniciarlo. Sigue contando aunque salgas de la app o bloquees el teléfono.
 - **Dibujar sobre la diapositiva (modo Navegador):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
 - **Por WiFi, las notas llegan desde la PC:** la presentación solo tiene que estar en la computadora.
 - **Modo Navegador:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
@@ -464,6 +466,8 @@ lib/
   mobile/browser_server.dart      servidor web + WebSocket del modo Navegador
   mobile/draw_page.dart           vista de dibujo (diapositiva en el teléfono)
   mobile/ink.dart                 trazos y puntero láser, enviados al navegador
+  mobile/talk_timer.dart          cronómetro (guarda la hora de inicio)
+  mobile/timer_chip.dart          botón del cronómetro
   mobile/native_bridge.dart       canal hacia el código nativo
   desktop/receiver_page.dart      ventana de la PC
   desktop/receiver_controller.dart  UDP + mDNS + Bluetooth LE

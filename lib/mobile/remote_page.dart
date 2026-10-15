@@ -8,6 +8,7 @@ import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'draw_page.dart';
 import 'remote_controller.dart';
+import 'timer_chip.dart';
 import 'wifi_client.dart';
 
 class RemotePage extends StatefulWidget {
@@ -68,35 +69,51 @@ class _RemotePageState extends State<RemotePage> {
               child: LayoutBuilder(
               builder: (context, box) => expanded
                   ? Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          TimerChip(c.timer),
+                          const Spacer(),
+                          Dot(connColor(c.status.conn)),
+                          const SizedBox(width: 8),
+                        ]),
+                        const SizedBox(height: 8),
                         Expanded(child: _notesPanel()),
                         const SizedBox(height: 10),
                         SizedBox(height: 64, child: _padsRow(compact: true)),
                       ]),
                     )
                   : Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _header(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Segmented<Mode>(
                     values: Mode.values,
                     labels: ['Bluetooth', 'WiFi', t('Navegador', 'Browser')],
                     selected: c.mode,
-                    onChanged: c.setMode,
+                    onChanged: (m) {
+                      _detailsOpen = null;
+                      c.setMode(m);
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  // La tarjeta del modo nunca se come la pantalla: si crece, hace scroll
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: box.maxHeight * (notes ? 0.28 : 0.4)),
-                    child: SingleChildScrollView(
-                      child: AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        alignment: Alignment.topCenter,
-                        child: _modeCard(),
-                      ),
-                    ),
+                  const SizedBox(height: 10),
+                  _connectionBar(),
+                  // Detalles del modo (elegir PC, dirección, etc.): se abren solos mientras falta
+                  // algo y se recogen al conectarse, para dejar espacio a notas y botones.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: _detailsVisible
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: box.maxHeight * (notes ? 0.34 : 0.45)),
+                              child: SingleChildScrollView(child: _modeCard()),
+                            ),
+                          )
+                        : const SizedBox(width: double.infinity),
                   ),
                   const SizedBox(height: 12),
                   if (notes) ...[
@@ -123,19 +140,22 @@ class _RemotePageState extends State<RemotePage> {
   Widget _header() => Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.slideshow_rounded, size: 20, color: Pal.onAccent),
+          ),
+          const SizedBox(width: 10),
           const Expanded(
             child: Text(
-              'Slide\nRemote',
-              style: TextStyle(
-                fontSize: 28,
-                height: 0.95,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.8,
-              ),
+              'Slide Remote',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.4),
             ),
           ),
-          StatusChip(c.status, maxWidth: 190),
-          const SizedBox(width: 4),
+          TimerChip(c.timer),
           IconButton(
             onPressed: _openSettings,
             icon: const Icon(Icons.tune_rounded, color: Pal.muted),
@@ -143,6 +163,73 @@ class _RemotePageState extends State<RemotePage> {
           ),
         ],
       );
+
+  // ================================================================ barra de conexión
+
+  /// null = automático (abiertos mientras no hay conexión); true/false = lo eligió el usuario.
+  bool? _detailsOpen;
+  bool _wasReady = false;
+
+  bool get _ready => c.status.conn == Conn.on;
+  bool get _detailsVisible => _detailsOpen ?? !_ready;
+
+  /// Una sola línea con el estado del modo; tocarla muestra u oculta los detalles.
+  Widget _connectionBar() {
+    final s = c.status;
+    if (_ready != _wasReady) {
+      _wasReady = _ready;
+      _detailsOpen = null; // al conectar/desconectar, volver al comportamiento automático
+    }
+    final open = _detailsVisible;
+    final canDraw = c.mode == Mode.browser && c.browser.hasPdf && !c.converting;
+    return Material(
+      color: Pal.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: _ready ? Pal.ok.withValues(alpha: 0.35) : Pal.stroke),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => setState(() => _detailsOpen = !open),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+          child: Row(children: [
+            Dot(connColor(s.conn)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: _ready ? Pal.ok : Pal.text,
+                    )),
+                if (s.subtitle != null && s.subtitle!.isNotEmpty)
+                  Text(s.subtitle!,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Pal.muted, fontSize: 12.5)),
+              ]),
+            ),
+            if (canDraw)
+              IconButton(
+                onPressed: _openDraw,
+                icon: const Icon(Icons.draw_rounded, color: Pal.accent),
+                tooltip: t('Dibujar sobre la diapositiva', 'Draw on the slide'),
+              ),
+            AnimatedRotation(
+              turns: open ? 0.5 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.expand_more_rounded, color: Pal.muted),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   // ================================================================ tarjetas por modo
 
@@ -351,7 +438,7 @@ class _RemotePageState extends State<RemotePage> {
                   Text('${pc.host}:${pc.port}', style: monoStyle.copyWith(color: Pal.muted, fontSize: 12)),
                 ]),
               ),
-              if (selected) Dot(online ? Pal.accent : Pal.busy),
+              if (selected) Dot(online ? Pal.ok : Pal.busy),
             ]),
           ),
         ),
@@ -478,7 +565,7 @@ class _RemotePageState extends State<RemotePage> {
         if (b.urls.length > 1)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('Otras: ${b.urls.skip(1).map((u) => u.replaceFirst('http://', '')).join('  ·  ')}',
+            child: Text('${t('Otras', 'Others')}: ${b.urls.skip(1).map((u) => u.replaceFirst('http://', '')).join('  ·  ')}',
                 style: monoStyle.copyWith(color: Pal.muted, fontSize: 11)),
           ),
         const SizedBox(height: 12),

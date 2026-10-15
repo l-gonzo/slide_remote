@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 
-/// Paleta: casi negro con un solo acento lima.
+/// Paleta "medianoche": azul marino profundo, acento coral para las acciones y verde menta
+/// para "conectado".
 abstract final class Pal {
-  static const bg = Color(0xFF0E0F12);
-  static const card = Color(0xFF17191E);
-  static const cardHi = Color(0xFF1F2228);
-  static const stroke = Color(0xFF2A2E36);
-  static const text = Color(0xFFF2F3F5);
-  static const muted = Color(0xFF8B919C);
-  static const accent = Color(0xFFC8F135);
-  static const onAccent = Color(0xFF11140A);
-  static const busy = Color(0xFFFFB547);
-  static const error = Color(0xFFFF6B6B);
-  static const off = Color(0xFF5C626D);
+  static const bg = Color(0xFF0D1020);
+  static const card = Color(0xFF161A2E);
+  static const cardHi = Color(0xFF20253D);
+  static const stroke = Color(0xFF2C3252);
+  static const text = Color(0xFFEEF0FA);
+  static const muted = Color(0xFF9097B8);
+  static const accent = Color(0xFFFF7A59); // coral
+  static const onAccent = Color(0xFF1E0B05);
+  static const ok = Color(0xFF3DDC97); // menta
+  static const busy = Color(0xFFFFC24B);
+  static const error = Color(0xFFFF5C7A);
+  static const off = Color(0xFF5A6185);
 }
 
 enum Conn { off, busy, on, error }
 
 Color connColor(Conn c) => switch (c) {
-      Conn.on => Pal.accent,
+      Conn.on => Pal.ok,
       Conn.busy => Pal.busy,
       Conn.error => Pal.error,
       Conn.off => Pal.off,
@@ -159,7 +161,7 @@ class StatusChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: view.conn == Conn.on ? Pal.accent : Pal.text,
+                  color: view.conn == Conn.on ? Pal.ok : Pal.text,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),

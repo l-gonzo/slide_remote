@@ -6,8 +6,8 @@
 <title>Slide Remote</title>
 <style>
   :root {
-    --bg: #000; --panel: rgba(23, 25, 30, .86); --stroke: #2a2e36;
-    --text: #f2f3f5; --muted: #8b919c; --accent: #c8f135; --busy: #ffb547; --off: #5c626d;
+    --bg: #000; --panel: rgba(22, 26, 46, .88); --stroke: #2c3252;
+    --text: #eef0fa; --muted: #9097b8; --accent: #ff7a59; --ok: #3ddc97; --busy: #ffc24b; --off: #5a6185;
   }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; overflow: hidden; }
@@ -16,20 +16,20 @@
   #wrap { position: relative; }
   #ink { position: absolute; left: 0; top: 0; pointer-events: none; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
-    justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0e0f12; }
+    justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0d1020; }
   #empty.show { display: flex; }
   #empty h1 { margin: 0; font-size: clamp(28px, 5vw, 56px); font-weight: 800; letter-spacing: -.02em; }
   #empty p { margin: 0; color: var(--muted); font-size: clamp(15px, 2vw, 20px); max-width: 32em; line-height: 1.45; }
-  #empty .mark { width: 72px; height: 72px; border-radius: 20px; background: var(--accent); color: #11140a;
+  #empty .mark { width: 72px; height: 72px; border-radius: 20px; background: var(--accent); color: #1e0b05;
     display: grid; place-items: center; font-size: 40px; font-weight: 900; }
   #hud { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 12px; align-items: center;
     font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--stroke);
     padding: 8px 8px 8px 14px; border-radius: 999px; transition: opacity .35s; backdrop-filter: blur(8px); }
   #hud .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
-  #hud.on .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  #hud.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
   #hud.busy .dot { background: var(--busy); }
   #pg { color: var(--text); font-variant-numeric: tabular-nums; }
-  #fs { font: inherit; color: #11140a; background: var(--accent); border: 0; border-radius: 999px;
+  #fs { font: inherit; color: #1e0b05; background: var(--accent); border: 0; border-radius: 999px;
     padding: 7px 14px; font-weight: 700; cursor: pointer; }
   body.idle #hud { opacity: 0; pointer-events: none; }
   body.idle { cursor: none; }
@@ -194,6 +194,26 @@
     st.textContent = T(key);
   }
 
+  // El teléfono decide la página: este navegador solo pide cambios y muestra lo que le digan.
+  // Así todas las pantallas abiertas en la dirección van sincronizadas.
+  function online() { return ws && ws.readyState === WebSocket.OPEN; }
+
+  function nav(d) {
+    if (online()) ws.send(JSON.stringify({ t: 'nav', d }));
+    else go(d); // sin teléfono: navegar aquí mismo
+  }
+
+  function navTo(n) {
+    if (online()) ws.send(JSON.stringify({ t: 'nav', page: n }));
+    else if (doc) { page = Math.min(Math.max(n, 1), total); show(); }
+  }
+
+  function setPage(n) {
+    if (!n) return;
+    page = doc ? Math.min(Math.max(n, 1), total) : n;
+    if (doc) show();
+  }
+
   function report() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ t: 'state', page: doc ? page : 0, total }));
@@ -206,7 +226,8 @@
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.t === 'go') go(msg.d);
+      if (msg.t === 'page') setPage(msg.page);
+      else if (msg.t === 'go') go(msg.d); // versión anterior de la app
       else if (msg.t === 'reload') { page = 1; load(); }
       else if (msg.t === 'ink') onInk(msg);
       else if (msg.t === 'inkAll') {
@@ -218,6 +239,7 @@
       else if (msg.t === 'lang') { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
       else if (msg.t === 'hello') {
         if (msg.lang && msg.lang !== lang) { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
+        if (msg.page) setPage(msg.page);
         if (msg.hasPdf && !doc) load();
         else if (!msg.hasPdf) showEmpty('pickPdf');
       }
@@ -294,15 +316,15 @@
 
   // ------------------------------------------------------------ teclado, clic, pantalla completa
   addEventListener('keydown', (e) => {
-    if (['ArrowRight', 'PageDown', ' ', 'Enter', 'ArrowDown'].includes(e.key)) { go(1); e.preventDefault(); }
-    else if (['ArrowLeft', 'PageUp', 'Backspace', 'ArrowUp'].includes(e.key)) { go(-1); e.preventDefault(); }
+    if (['ArrowRight', 'PageDown', ' ', 'Enter', 'ArrowDown'].includes(e.key)) { nav(1); e.preventDefault(); }
+    else if (['ArrowLeft', 'PageUp', 'Backspace', 'ArrowUp'].includes(e.key)) { nav(-1); e.preventDefault(); }
     else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
-    else if (e.key === 'Home') { page = 1; show(); }
-    else if (e.key === 'End' && doc) { page = total; show(); }
+    else if (e.key === 'Home') navTo(1);
+    else if (e.key === 'End' && doc) navTo(total);
   });
 
   document.getElementById('stage').addEventListener('click', (e) => {
-    go(e.clientX < innerWidth / 3 ? -1 : 1);
+    nav(e.clientX < innerWidth / 3 ? -1 : 1);
   });
 
   document.getElementById('fs').addEventListener('click', (e) => {

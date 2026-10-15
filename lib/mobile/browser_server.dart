@@ -30,7 +30,12 @@ class BrowserServer extends ChangeNotifier {
 
   File? pdfFile;
   String? pdfName;
+
+  /// Página actual (empieza en 1). La decide el TELÉFONO y todos los navegadores conectados la
+  /// siguen: así varias pantallas (y la app) muestran siempre la misma diapositiva.
   int page = 0;
+
+  /// Páginas del PDF (lo informa el primer navegador que lo abre, o la vista de dibujo).
   int total = 0;
   int port = 0;
   List<String> urls = const [];
@@ -86,18 +91,39 @@ class BrowserServer extends ChangeNotifier {
   Future<void> setPdf(File file, String name) async {
     pdfFile = file;
     pdfName = name;
-    page = 0;
+    page = 1;
     total = 0;
     ink.clearAll();
     _broadcast({'t': 'reload'});
     notifyListeners();
   }
 
-  /// Avanza (+1) o retrocede (-1). false si no hay ningún navegador conectado.
+  /// Avanza (+1) o retrocede (-1). Cambia la página aunque no haya navegadores (la vista de
+  /// dibujo la usa); devuelve false si no hay ninguno conectado.
   bool go(int delta) {
-    if (_clients.isEmpty) return false;
-    _broadcast({'t': 'go', 'd': delta});
-    return true;
+    goTo((page < 1 ? 1 : page) + delta);
+    return _clients.isNotEmpty;
+  }
+
+  /// Ir a una página y mandarla a TODOS los navegadores.
+  void goTo(int p) {
+    if (!hasPdf) return;
+    final n = total > 0 ? p.clamp(1, total) : (p < 1 ? 1 : p);
+    if (n == page) {
+      _broadcast({'t': 'page', 'page': page}); // por si alguno se había desfasado
+      return;
+    }
+    page = n;
+    _broadcast({'t': 'page', 'page': page});
+    notifyListeners();
+  }
+
+  /// Número de páginas si aún no se sabe (lo calcula la vista de dibujo del teléfono).
+  void setTotalIfUnknown(int n) {
+    if (total > 0 || n <= 0) return;
+    total = n;
+    if (page > total) goTo(total);
+    notifyListeners();
   }
 
   // ------------------------------------------------------------------ HTTP
@@ -167,17 +193,34 @@ class BrowserServer extends ChangeNotifier {
   void _addClient(WebSocket ws) {
     _clients.add(ws);
     ws.pingInterval = const Duration(seconds: 5);
-    ws.add(jsonEncode({'t': 'hello', 'hasPdf': hasPdf, 'name': pdfName, 'lang': lang}));
+    ws.add(jsonEncode({'t': 'hello', 'hasPdf': hasPdf, 'name': pdfName, 'lang': lang, 'page': page < 1 ? 1 : page}));
     ws.add(jsonEncode(ink.snapshot()));
     ws.listen(
       (data) {
         if (data is! String) return;
         try {
           final msg = jsonDecode(data);
-          if (msg is Map && msg['t'] == 'state') {
-            page = (msg['page'] as num?)?.toInt() ?? 0;
-            total = (msg['total'] as num?)?.toInt() ?? 0;
-            notifyListeners();
+          if (msg is! Map) return;
+          switch (msg['t']) {
+            case 'state':
+              // El navegador cargó el PDF: de él sale el número de páginas
+              final n = (msg['total'] as num?)?.toInt() ?? 0;
+              if (n > 0 && n != total) {
+                total = n;
+                if (page > total) page = total;
+                notifyListeners();
+              }
+              // Si muestra otra página que la del teléfono, corregirlo
+              final shown = (msg['page'] as num?)?.toInt() ?? 0;
+              if (shown > 0 && page > 0 && shown != page) ws.add(jsonEncode({'t': 'page', 'page': page}));
+            case 'nav':
+              // Teclado o clic en un navegador: lo decide el teléfono y se replica en todos
+              final to = (msg['page'] as num?)?.toInt();
+              if (to != null) {
+                goTo(to);
+              } else {
+                go((msg['d'] as num?)?.toInt() ?? 0);
+              }
           }
         } catch (_) {}
       },

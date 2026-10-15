@@ -279,7 +279,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(color: Pal.cardHi, borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, color: conn == Conn.on ? Pal.accent : Pal.muted, size: 20),
+          child: Icon(icon, color: conn == Conn.on ? Pal.ok : Pal.muted, size: 20),
         ),
         const SizedBox(width: 14),
         Expanded(

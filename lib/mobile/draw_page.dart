@@ -6,6 +6,7 @@ import '../common/theme.dart';
 import 'ink.dart';
 import 'native_bridge.dart';
 import 'remote_controller.dart';
+import 'timer_chip.dart';
 
 /// Modo Navegador → "Dibujar": la diapositiva actual en el teléfono. Lo que dibujes (pluma,
 /// marcatextos o puntero láser) aparece al instante sobre la presentación en el navegador de la PC.
@@ -35,17 +36,15 @@ class _DrawPageState extends State<DrawPage> {
   Color _hlColor = _colors[1];
   bool _landscape = false;
 
-  /// Página que se muestra si ningún navegador está conectado (sin navegador no hay "página actual").
-  int _localPage = 1;
-  int _pdfPages = 0;
 
   final Map<int, PdfPageImage> _images = {};
   final Set<int> _loading = {};
   String? _pdfPath;
   bool _failed = false;
 
-  int get _page => c.browser.viewers > 0 && c.browser.page > 0 ? c.browser.page : _localPage;
-  int get _total => c.browser.total > 0 ? c.browser.total : _pdfPages;
+  /// La página la lleva el teléfono (la misma en todos los navegadores conectados).
+  int get _page => c.browser.page < 1 ? 1 : c.browser.page;
+  int get _total => c.browser.total;
 
   @override
   void dispose() {
@@ -86,7 +85,7 @@ class _DrawPageState extends State<DrawPage> {
             return;
           }
           _images[p] = img;
-          if (img.pages > 0) _pdfPages = img.pages;
+          if (img.pages > 0) c.browser.setTotalIfUnknown(img.pages);
           // Guardar pocas en memoria
           if (_images.length > 6) {
             final far = _images.keys.toList()..sort((a, b) => (a - _page).abs().compareTo((b - _page).abs()));
@@ -103,13 +102,11 @@ class _DrawPageState extends State<DrawPage> {
 
   void _go(bool forward) {
     if (c.browser.viewers > 0) {
-      c.send(forward: forward);
+      c.send(forward: forward); // igual que los botones de volumen
     } else {
+      // Sin navegador conectado también se puede recorrer y dibujar
       HapticFeedback.selectionClick();
-      setState(() {
-        final max = _total > 0 ? _total : 9999;
-        _localPage = (_localPage + (forward ? 1 : -1)).clamp(1, max);
-      });
+      c.browser.go(forward ? 1 : -1);
     }
   }
 
@@ -154,7 +151,8 @@ class _DrawPageState extends State<DrawPage> {
             width: 230,
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               _topBar(compact: true),
-              const SizedBox(height: 6),
+              Align(alignment: Alignment.centerLeft, child: TimerChip(c.timer)),
+              const SizedBox(height: 8),
               _toolbar(),
               const SizedBox(height: 8),
               Expanded(child: _notes()),
@@ -173,14 +171,13 @@ class _DrawPageState extends State<DrawPage> {
         icon: const Icon(Icons.arrow_back_rounded),
         tooltip: t('Volver', 'Back'),
       ),
-      if (!compact)
-        Text(t('Dibujar', 'Draw'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-      const SizedBox(width: 10),
+      const SizedBox(width: 4),
       Text(
         total > 0 ? '$_page / $total' : '$_page',
         style: monoStyle.copyWith(color: Pal.accent, fontWeight: FontWeight.w700),
       ),
       const Spacer(),
+      if (!compact) ...[TimerChip(c.timer), const SizedBox(width: 4)],
       if (c.browser.viewers == 0)
         Tooltip(
           message: t('Abre la dirección en el navegador de la PC', 'Open the address in the computer’s browser'),

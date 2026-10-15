@@ -15,6 +15,7 @@ import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'browser_server.dart';
 import 'native_bridge.dart';
+import 'talk_timer.dart';
 import 'wifi_client.dart';
 
 enum Mode { bluetooth, wifi, browser }
@@ -32,6 +33,9 @@ class RemoteController extends ChangeNotifier {
 
   final wifi = WifiClient();
   final browser = BrowserServer();
+
+  /// Cronómetro de la presentación (solo en el teléfono).
+  final timer = TalkTimer();
 
   final bool isAndroid = Platform.isAndroid;
   final bool isIOS = Platform.isIOS;
@@ -109,7 +113,7 @@ class RemoteController extends ChangeNotifier {
   SlideInfo? get nextSlide => (deck == null || slide + 1 >= deck!.length) ? null : deck![slide + 1];
 
   /// En el modo Navegador la página la reporta el navegador; en los demás se cuenta.
-  bool get slideIsExact => mode == Mode.browser && browser.viewers > 0;
+  bool get slideIsExact => mode == Mode.browser && browser.hasPdf;
 
   // ---- avisos para la UI
   final _nudges = StreamController<String>.broadcast();
@@ -140,6 +144,7 @@ class RemoteController extends ChangeNotifier {
         manual: _prefs.getBool('wifi_manual') ?? false,
       ));
     }
+    await timer.load();
     await _restorePdf();
     await _restoreNotes();
 
