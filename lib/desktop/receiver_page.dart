@@ -364,8 +364,8 @@ class _ReceiverPageState extends State<ReceiverPage> {
       icon: Icons.wifi,
       title: 'WiFi',
       detail: c.wifiAnnounced
-          ? t('Visible en la red como “${c.hostName}”. En el teléfono elige el modo WiFi.',
-              'Visible on the network as “${c.hostName}”. On the phone choose WiFi mode.')
+          ? t('Visible en la red como “${c.hostName}”. En el teléfono elige “Transmitir desde PC”.',
+              'Visible on the network as “${c.hostName}”. On the phone choose “Stream from PC”.')
           : t('Escuchando. Si el teléfono no encuentra la PC, agrégala por IP:',
               'Listening. If the phone can’t find the computer, add it by IP:'),
       extra: ips,
@@ -376,7 +376,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
     final (conn, detail) = switch (c.bleStatus) {
       BleStatus.connected => (Conn.on, '${t('Conectado a', 'Connected to')} ${c.bleDeviceName ?? 'iPhone'}'),
       BleStatus.connecting => (Conn.busy, t('Conectando con ${c.bleDeviceName ?? 'el iPhone'}…', 'Connecting to ${c.bleDeviceName ?? 'the iPhone'}…')),
-      BleStatus.searching => (Conn.busy, t('Buscando el iPhone. Abre Slide Remote y elige Bluetooth.', 'Looking for the iPhone. Open Slide Remote and choose Bluetooth.')),
+      BleStatus.searching => (Conn.busy, t('Buscando el iPhone. Abre Slide Remote y elige “Control Bluetooth”.', 'Looking for the iPhone. Open Slide Remote and choose “Bluetooth control”.')),
       BleStatus.off => (Conn.error, t('El Bluetooth de la PC está apagado.', 'The computer’s Bluetooth is off.')),
       BleStatus.unauthorized => (Conn.error, t('Permite el uso de Bluetooth a Slide Remote en los ajustes del sistema.', 'Allow Slide Remote to use Bluetooth in the system settings.')),
       BleStatus.unsupported => (Conn.off, t('Esta PC no tiene Bluetooth LE.', 'This computer has no Bluetooth LE.')),

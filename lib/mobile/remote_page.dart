@@ -90,7 +90,11 @@ class _RemotePageState extends State<RemotePage> {
                   const SizedBox(height: 12),
                   Segmented<Mode>(
                     values: Mode.values,
-                    labels: ['Bluetooth', 'WiFi', t('Navegador', 'Browser')],
+                    labels: [
+                      t('Control\nBluetooth', 'Bluetooth\ncontrol'),
+                      t('Transmitir\ndesde PC', 'Stream\nfrom PC'),
+                      t('Transmitir\ndesde móvil', 'Stream\nfrom phone'),
+                    ],
                     selected: c.mode,
                     onChanged: (m) {
                       _detailsOpen = null;
@@ -266,8 +270,8 @@ class _RemotePageState extends State<RemotePage> {
               BtState.noPermission => t('Slide Remote necesita el permiso de “Dispositivos cercanos”.',
                   'Slide Remote needs the “Nearby devices” permission.'),
               _ => c.btMessage ??
-                  t('El modo teclado no está disponible en este teléfono. Usa WiFi o Navegador.',
-                      'Keyboard mode is not available on this phone. Use WiFi or Browser.'),
+                  t('El control Bluetooth no está disponible en este teléfono. Usa “Transmitir desde PC” o “Transmitir desde móvil”.',
+                      'Bluetooth control is not available on this phone. Use “Stream from PC” or “Stream from phone”.'),
             },
             style: const TextStyle(color: Pal.muted, height: 1.4),
           ),
@@ -600,7 +604,7 @@ class _RemotePageState extends State<RemotePage> {
   void _openDraw() {
     final wifiUri = c.mode == Mode.wifi ? c.pcDrawUri : null;
     if (c.mode == Mode.wifi && wifiUri == null) {
-      _showNudge(t('Conéctate a la PC por WiFi primero', 'Connect to the computer over WiFi first'));
+      _showNudge(t('Conéctate a la PC primero', 'Connect to the computer first'));
       return;
     }
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -875,10 +879,10 @@ class _RemotePageState extends State<RemotePage> {
                 ]),
                 const SizedBox(height: 10),
                 Text(
-                  t('Por Bluetooth y WiFi el teléfono cuenta las pulsaciones (incluidas las animaciones). '
-                      'Si se desfasa, corrígelo con − / + en el panel de notas. En el modo Navegador se sincroniza solo.',
-                      'Over Bluetooth and WiFi the phone counts the presses (animations included). '
-                      'If it gets out of step, fix it with − / + in the notes panel. Browser mode syncs by itself.'),
+                  t('Con PowerPoint o Impress el teléfono cuenta las pulsaciones (incluidas las animaciones); si se desfasa, '
+                      'corrígelo con − / + en el panel de notas. Al transmitir (desde la PC o desde el móvil) se sincroniza solo.',
+                      'With PowerPoint or Impress the phone counts the presses (animations included); if it gets out of step, '
+                      'fix it with − / + in the notes panel. When streaming (from the PC or the phone) it syncs by itself.'),
                   style: const TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
                 ),
               ],

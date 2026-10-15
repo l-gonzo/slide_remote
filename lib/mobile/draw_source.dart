@@ -304,7 +304,8 @@ class WifiDrawSource extends DrawSource {
         _total = (m['total'] as num?)?.toInt() ?? _total;
         final ver = (m['ver'] as num?)?.toInt() ?? 0;
         if (_presenting && ver != 0 && ver != _ver) {
-          if (_ver != 0) ink.clearAll(); // otra presentación: los dibujos viejos ya no aplican
+          // Otra presentación: los dibujos viejos ya no aplican (si solo se editó, se conservan)
+          if (_ver != 0 && m['keep'] != true) ink.clearAll();
           _ver = ver;
           _download(ver);
         } else if (_presenting) {

@@ -41,6 +41,8 @@ class PresentHost extends ChangeNotifier {
   String? _source; // archivo original
   DateTime? _sourceTime;
   int version = 0; // cambia con cada PDF (el teléfono vuelve a descargarlo)
+  bool _keepInk = false; // la última versión es el mismo archivo con cambios (no borrar dibujos)
+  DateTime? _pendingTime; // cambio visto en el archivo, esperando a que termine de guardarse
 
   int page = 1;
   int total = 0;
@@ -64,19 +66,31 @@ class PresentHost extends ChangeNotifier {
     final src = File(sourcePath);
     final mtime = await src.lastModified();
     if (_pdf == null || _source != sourcePath || _sourceTime != mtime) {
+      // Mismo archivo, solo con cambios guardados: conservar la página y los dibujos
+      final sameFile = _pdf != null && _source == sourcePath;
       converting = true;
       notifyListeners();
       _sendPhones(_presentState());
       try {
+        final old = _pdf;
         _pdf = await _toPdf(src);
+        if (old != null && old.path != _pdf!.path && old.path != sourcePath) {
+          try {
+            await old.parent.delete(recursive: true); // conversión anterior
+          } catch (_) {}
+        }
         _source = sourcePath;
         _sourceTime = mtime;
+        _pendingTime = null;
         version = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
-        page = 1;
-        total = 0;
-        _ink.clear();
+        _keepInk = sameFile;
+        if (!sameFile) {
+          page = 1;
+          _ink.clear();
+          _broadcastPages({'t': 'ink', 'op': 'clearAll'});
+        }
+        total = 0; // lo vuelve a informar el navegador (pudo cambiar)
         _broadcastPages({'t': 'reload'});
-        _broadcastPages({'t': 'ink', 'op': 'clearAll'});
       } on FormatException catch (e) {
         error = e.message;
       } catch (e) {
@@ -125,10 +139,35 @@ class PresentHost extends ChangeNotifier {
 
   static Future<File> _toPdf(File src) async {
     if (src.path.toLowerCase().endsWith('.pdf')) return src;
-    final dir = Directory('${Directory.systemTemp.path}${Platform.pathSeparator}slideremote-present');
-    if (await dir.exists()) await dir.delete(recursive: true);
-    await dir.create(recursive: true);
-    return Office.convert(src, 'pdf', dir);
+    // Carpeta nueva cada vez: si la conversión falla, la presentación anterior sigue en pantalla
+    final dir = await Directory.systemTemp.createTemp('slideremote-present');
+    try {
+      return await Office.convert(src, 'pdf', dir);
+    } catch (_) {
+      try {
+        await dir.delete(recursive: true);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  /// Se llama cada ~2 s: si guardaste cambios en la presentación mientras se proyecta, se vuelve
+  /// a convertir y el navegador (y el teléfono) se actualizan solos, en la misma diapositiva.
+  Future<void> checkSourceModified() async {
+    final src = _source;
+    if (!active || converting || src == null) return;
+    try {
+      final m = await File(src).lastModified();
+      if (m == _sourceTime) return;
+      // Esperar a que el archivo deje de cambiar (los programas guardan en varios pasos)
+      if (_pendingTime != m) {
+        _pendingTime = m;
+        return;
+      }
+      await start(src, name ?? '', openBrowser: false);
+    } catch (_) {
+      // El archivo se movió o se está escribiendo: se intenta en la siguiente vuelta
+    }
   }
 
   // ---------------------------------------------------------------- navegación (la decide la app)
@@ -275,6 +314,7 @@ class PresentHost extends ChangeNotifier {
         'name': name,
         'converting': converting,
         'error': error,
+        'keep': _keepInk,
       };
 
   void _addPhone(WebSocket ws) {

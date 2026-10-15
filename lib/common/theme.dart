@@ -253,7 +253,7 @@ class Segmented<T> extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   decoration: BoxDecoration(
                     color: values[i] == selected ? Pal.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
@@ -261,9 +261,12 @@ class Segmented<T> extends StatelessWidget {
                   child: Text(
                     labels[i],
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: values[i] == selected ? Pal.onAccent : Pal.muted,
-                      fontSize: 14,
+                      fontSize: 13,
+                      height: 1.2,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

@@ -234,7 +234,7 @@
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.t === 'page') setPage(msg.page);
       else if (msg.t === 'go') go(msg.d); // versión anterior de la app
-      else if (msg.t === 'reload') { page = 1; load(); }
+      else if (msg.t === 'reload') load(); // se queda en la misma página (la corrige el teléfono/la PC)
       else if (msg.t === 'ink') onInk(msg);
       else if (msg.t === 'inkAll') {
         inkPages.clear();

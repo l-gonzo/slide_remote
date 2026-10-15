@@ -93,6 +93,7 @@ class ReceiverController extends ChangeNotifier {
     // Refresca estados que dependen del tiempo (teléfono visto hace poco, permisos)
     _tick = Timer.periodic(const Duration(seconds: 2), (_) {
       notes.checkModified();
+      present.checkSourceModified();
       _notify();
     });
     _notify();

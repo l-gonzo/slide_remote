@@ -36,19 +36,21 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Volumen + / Volumen −** = siguiente / anterior (se puede invertir). También hay botones grandes en pantalla.
 - **Tres modos:** Bluetooth, WiFi y Navegador (ver abajo). Al salir de la app suelta el volumen y la conexión; al volver se **reconecta sola**.
 - **Notas del presentador** en el teléfono, con título de la diapositiva, aviso de animaciones y “Sigue: …”. Botón para **expandir las notas** a casi toda la pantalla (los botones de cambiar diapositiva se hacen compactos).
-- **Proyectar desde la app de escritorio (modo WiFi), con dibujo:** en la app de escritorio elige tu presentación y toca **Proyectar en esta PC** (o toca ✎ en el teléfono y luego *Proyectar en la PC*). Se abre en el navegador de la PC (presiona *Pantalla completa*) y se controla desde el teléfono: cambias de diapositiva sin simular teclas, las notas van sincronizadas con la página exacta y lo que dibujas en el teléfono (pluma, marcatextos, láser) aparece encima al instante. Funciona igual en Windows, macOS y Linux (también con Wayland), sin permisos especiales. Para .pptx/.odp/.ppt hace falta LibreOffice en la PC (en Windows también sirve PowerPoint); un PDF se proyecta tal cual.
-- **Varias pantallas sincronizadas (modo Navegador):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
+- **Proyectar desde la app de escritorio (modo “Transmitir desde PC”), con dibujo:** en la app de escritorio elige tu presentación y toca **Proyectar en esta PC** (o toca ✎ en el teléfono y luego *Proyectar en la PC*). Se abre en el navegador de la PC (presiona *Pantalla completa*) y se controla desde el teléfono: cambias de diapositiva sin simular teclas, las notas van sincronizadas con la página exacta y lo que dibujas en el teléfono (pluma, marcatextos, láser) aparece encima al instante. Funciona igual en Windows, macOS y Linux (también con Wayland), sin permisos especiales. Si guardas cambios en la presentación mientras se transmite, se vuelve a convertir y el navegador y el teléfono se actualizan solos, en la misma diapositiva y sin perder los dibujos. Para .pptx/.odp/.ppt hace falta LibreOffice en la PC (en Windows también sirve PowerPoint); un PDF se proyecta tal cual.
+- **Varias pantallas sincronizadas (modo “Transmitir desde móvil”):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
 - **Cronómetro** de la presentación, solo visible en el teléfono (arriba a la derecha): toca para iniciar o pausar; en pausa aparece ↺ para reiniciarlo. Sigue contando aunque salgas de la app o bloquees el teléfono.
-- **Dibujar sobre la diapositiva (modo Navegador):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
+- **Dibujar sobre la diapositiva (modo “Transmitir desde móvil”):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
 - **Por WiFi, las notas llegan desde la PC:** la presentación solo tiene que estar en la computadora.
-- **Modo Navegador:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
+- **Modo “Transmitir desde móvil”:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
 - Lee notas de **PowerPoint, LibreOffice, OnlyOffice, WPS, Google Slides exportado** (`.pptx`, `.odp` y variantes).
 - La pantalla del teléfono no se apaga mientras la app está abierta.
-- **Español e inglés:** usa el idioma del sistema (si no es español, inglés). Se cambia en **Ajustes → Idioma** del teléfono o con el botón de idioma (🌐) de la app de escritorio. La página del modo Navegador usa el idioma de la app del teléfono.
+- **Español e inglés:** usa el idioma del sistema (si no es español, inglés). Se cambia en **Ajustes → Idioma** del teléfono o con el botón de idioma (🌐) de la app de escritorio. La página del modo “Transmitir desde móvil” usa el idioma de la app del teléfono.
 
 ## Modos de conexión
 
-| Teléfono → | **Bluetooth** | **WiFi** | **Navegador** |
+En la app los modos se llaman **Control Bluetooth**, **Transmitir desde PC** (por WiFi, con la app de escritorio) y **Transmitir desde móvil** (la página que sirve el teléfono). Abajo, “WiFi” y “Navegador” se refieren a los dos últimos.
+
+| Teléfono → | **Control Bluetooth** | **Transmitir desde PC** (WiFi) | **Transmitir desde móvil** (navegador) |
 |---|---|---|---|
 | **Android** | ✅ Sin instalar nada en la PC: el teléfono es un **teclado Bluetooth** | App de escritorio | ✅ Sin instalar nada en la PC |
 | **iPhone** | App de escritorio (Bluetooth LE) | App de escritorio | ✅ Sin instalar nada en la PC |
@@ -65,7 +67,7 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 En una tablet (Android o iPad) no se puede instalar el receptor: los sistemas no permiten que una app presione teclas en otra. Usa:
 
 - **Teléfono Android en modo Bluetooth:** la tablet lo ve como teclado Bluetooth.
-- **Modo Navegador:** abre la dirección del teléfono en Safari/Chrome de la tablet.
+- **Modo “Transmitir desde móvil”:** abre la dirección del teléfono en Safari/Chrome de la tablet.
 
 ## Uso
 
@@ -269,7 +271,7 @@ adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   # con e
 
 O copia el `.apk` al teléfono y ábrelo (permite “instalar apps desconocidas”).
 
-- **Convertidor a PDF:** solo viene si antes compilaste LibreOffice (ver [abajo](#convertidor-a-pdf-en-android-libreoffice)). Sin él todo funciona menos convertir presentaciones en el modo Navegador.
+- **Convertidor a PDF:** solo viene si antes compilaste LibreOffice (ver [abajo](#convertidor-a-pdf-en-android-libreoffice)). Sin él todo funciona menos convertir presentaciones en el modo “Transmitir desde móvil”.
 - **Un solo APK para todos:** `flutter build apk --release` (más pesado).
 - **Google Play:** `flutter build appbundle --release` → `build/app/outputs/bundle/release/app-release.aab`.
 
@@ -372,7 +374,7 @@ El proyecto trae `.github/workflows/build.yml`: GitHub compila en sus servidores
 
 ## Convertidor a PDF en Android (LibreOffice)
 
-El modo Navegador convierte presentaciones a PDF dentro del teléfono:
+El modo “Transmitir desde móvil” convierte presentaciones a PDF dentro del teléfono:
 
 - **iPhone:** usa el visor de documentos de iOS. No hay que hacer nada.
 - **Android:** usa LibreOffice compilado dentro de la app. No viene en el repositorio (pesa ~100 MB); se compila **una vez** en Linux:
@@ -426,7 +428,7 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 |---|---|
 | UDP 50505 | Comandos del teléfono a la app de escritorio |
 | TCP 50506 | Notas de la PC al teléfono, “Proyectar en esta PC” (página en `http://127.0.0.1:50506/`) y dibujo (WebSocket `/phone`); solo responde a teléfonos que ya se conectaron y a esta misma PC |
-| TCP 8080 (o el siguiente libre) | Página del modo Navegador, servida por el teléfono |
+| TCP 8080 (o el siguiente libre) | Página del modo “Transmitir desde móvil”, servida por el teléfono |
 
 ## Limitaciones
 
@@ -464,7 +466,7 @@ lib/
   mobile/remote_page.dart         pantalla del teléfono
   mobile/remote_controller.dart   modos, reconexión, notas (del teléfono o de la PC)
   mobile/wifi_client.dart         descubrimiento mDNS + UDP
-  mobile/browser_server.dart      servidor web + WebSocket del modo Navegador
+  mobile/browser_server.dart      servidor web + WebSocket del modo “Transmitir desde móvil”
   mobile/draw_page.dart           vista de dibujo (diapositiva en el teléfono)
   mobile/draw_source.dart         de dónde sale la diapositiva: PDF del teléfono (Navegador) o de la PC (WiFi)
   mobile/ink.dart                 trazos y puntero láser, enviados al navegador
@@ -485,7 +487,7 @@ packages/slide_native/            plugin propio
   android/…/org/libreoffice/kit/  clases JNI de LibreOffice (MPL 2.0)
   ios/Classes/SlideNativePlugin.swift      BLE periférico, volumen
   ios/Classes/PresentationConverter.swift  presentación → PDF con WebKit
-assets/web/                       página del modo Navegador + pdf.js 4.10
+assets/web/                       página del modo “Transmitir desde móvil” + pdf.js 4.10
 tool/setup_linux.sh               prepara una PC con Linux desde cero
 tool/setup_macos.sh               prepara una Mac desde cero
 tool/setup_windows.ps1            prepara una PC con Windows desde cero
@@ -504,5 +506,5 @@ tool/package_macos.sh             crea .dmg
 
 ## Licencias
 
-- **pdf.js** (modo Navegador): Apache 2.0.
+- **pdf.js** (modo “Transmitir desde móvil”): Apache 2.0.
 - **LibreOffice** (convertidor de Android): MPL 2.0; el script copia su licencia dentro de la app.
