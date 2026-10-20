@@ -52,6 +52,9 @@ class InkBoard extends ChangeNotifier {
   Offset? laser;
   int laserPage = 0;
 
+  /// Tamaño del puntero láser (1 = normal).
+  double laserScale = 1;
+
   InkStroke? _current;
   int _currentPage = 0;
   final List<Offset> _pending = [];
@@ -64,8 +67,10 @@ class InkBoard extends ChangeNotifier {
 
   // ---------------------------------------------------------------- trazos
 
+  /// [width]: grosor como fracción del ancho de la página; con el láser, su tamaño (1 = normal).
   void begin(int page, Offset p, {required InkTool tool, required Color color, required double width}) {
     if (tool == InkTool.laser) {
+      laserScale = width;
       _moveLaser(page, p, force: true);
       return;
     }
@@ -120,7 +125,7 @@ class InkBoard extends ChangeNotifier {
     final now = DateTime.now();
     if (!force && now.difference(_lastLaser) < const Duration(milliseconds: 20)) return;
     _lastLaser = now;
-    _send({'t': 'laser', 'page': page, 'x': InkStroke._r(p.dx), 'y': InkStroke._r(p.dy)});
+    _send({'t': 'laser', 'page': page, 'x': InkStroke._r(p.dx), 'y': InkStroke._r(p.dy), 's': InkStroke._r(laserScale)});
   }
 
   void undo(int page) {

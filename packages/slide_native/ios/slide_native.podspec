@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name             = 'slide_native'
   s.version          = '1.0.0'
-  s.summary          = 'Código nativo de Slide Remote: BLE periférico y botones de volumen.'
+  s.summary          = 'Código nativo de Zlide: BLE periférico y botones de volumen.'
   s.description      = 'Anuncia un servicio Bluetooth LE para la app de escritorio y captura los botones de volumen.'
   s.homepage         = 'https://github.com/l-gonzo'
   s.license          = { :type => 'MIT' }

@@ -1,6 +1,6 @@
 # Crea los instaladores de la app de escritorio para Windows:
-#   dist\SlideRemote-Setup-<versión>.exe   (instalador; necesita Inno Setup 6)
-#   dist\SlideRemote-<versión>-windows-x64.zip (portátil)
+#   dist\Zlide-Setup-<versión>.exe   (instalador; necesita Inno Setup 6)
+#   dist\Zlide-<versión>-windows-x64.zip (portátil)
 #
 #   powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1
 #   powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1 -NoBuild
@@ -31,7 +31,7 @@ foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 Write-Host '==> .zip portátil'
-$zip = Join-Path $dist "SlideRemote-$version-windows-x64.zip"
+$zip = Join-Path $dist "Zlide-$version-windows-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path "$release\*" -DestinationPath $zip
 
@@ -51,4 +51,4 @@ if ($iscc) {
 
 Write-Host ''
 Write-Host 'Listo:'
-Get-ChildItem $dist | Where-Object { $_.Name -like "SlideRemote*$version*" } | ForEach-Object { "  {0:N1} MB  {1}" -f ($_.Length / 1MB), $_.FullName }
+Get-ChildItem $dist | Where-Object { $_.Name -like "Zlide*$version*" } | ForEach-Object { "  {0:N1} MB  {1}" -f ($_.Length / 1MB), $_.FullName }

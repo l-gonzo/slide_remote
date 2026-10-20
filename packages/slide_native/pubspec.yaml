@@ -1,5 +1,5 @@
 name: slide_native
-description: Código nativo de Slide Remote (teclado Bluetooth en Android, BLE en iOS, botones de volumen).
+description: Código nativo de Zlide (teclado Bluetooth en Android, BLE en iOS, botones de volumen).
 version: 1.0.0
 publish_to: none
 

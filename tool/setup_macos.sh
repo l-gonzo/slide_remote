@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepara una Mac desde cero para compilar Slide Remote (app de Mac, iPhone y, opcional, Android).
+# Prepara una Mac desde cero para compilar Zlide (app de Mac, iPhone y, opcional, Android).
 #
 #   bash tool/setup_macos.sh              # Mac + iPhone
 #   bash tool/setup_macos.sh --android    # además Java 17 y el SDK de Android
@@ -76,7 +76,7 @@ python3 tool/build.py doctor || true
 
 echo
 echo "Listo. Abre una terminal nueva y compila con:"
-echo "    python3 tool/build.py macos     # dist/SlideRemote-<versión>-macos.dmg"
+echo "    python3 tool/build.py macos     # dist/Zlide-<versión>-macos.dmg"
 echo "    python3 tool/build.py ios       # .ipa (necesita tu equipo en Xcode: open ios/Runner.xcworkspace)"
 [[ $WITH_ANDROID -eq 1 ]] && echo "    python3 tool/build.py android   # APK"
 echo "Para instalar en tu iPhone sin .ipa: flutter run --release -d <id>  (ver: flutter devices)"

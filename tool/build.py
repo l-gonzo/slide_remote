@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compila Slide Remote y deja los instaladores en dist/. Funciona igual en Linux, macOS y Windows.
+Compila Zlide y deja los instaladores en dist/. Funciona igual en Linux, macOS y Windows.
 
     python3 tool/build.py            # todo lo que se puede compilar en esta computadora
     python3 tool/build.py android    # APK (cualquier sistema)
@@ -89,13 +89,13 @@ def build_android():
     for abi, label in [("arm64-v8a", "arm64"), ("armeabi-v7a", "armv7"), ("x86_64", "x86_64")]:
         src = out / f"app-{abi}-release.apk"
         if src.is_file():
-            dst = DIST / f"SlideRemote-{v}-android-{label}.apk"
+            dst = DIST / f"Zlide-{v}-android-{label}.apk"
             shutil.copy2(src, dst)
             copied.append(dst)
     for f in copied:
         print(f"   {f.stat().st_size / 1e6:6.1f} MB  {f.relative_to(ROOT)}")
     print("   Instala el de arm64 (casi todos los teléfonos): adb install -r dist/"
-          f"SlideRemote-{v}-android-arm64.apk")
+          f"Zlide-{v}-android-arm64.apk")
 
 
 def build_linux():
@@ -136,7 +136,7 @@ def build_ios():
         return
     DIST.mkdir(exist_ok=True)
     for ipa in (ROOT / "build/ios/ipa").glob("*.ipa"):
-        dst = DIST / f"SlideRemote-{version()}-ios.ipa"
+        dst = DIST / f"Zlide-{version()}-ios.ipa"
         shutil.copy2(ipa, dst)
         print(f"   {dst.relative_to(ROOT)}")
 

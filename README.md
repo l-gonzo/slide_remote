@@ -1,4 +1,8 @@
-# Slide Remote
+# Zlide
+
+<img src="assets/icon/icon.png" width="120" align="right" alt="Ícono de Zlide">
+
+*(Antes se llamaba Slide Remote.)*
 
 Cambia las diapositivas de tu presentación con los **botones de volumen del teléfono** y ve tus **notas del presentador** en la pantalla del teléfono.
 
@@ -39,11 +43,12 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Proyectar desde la app de escritorio (modo “Transmitir desde PC”), con dibujo:** en la app de escritorio elige tu presentación y toca **Proyectar en esta PC** (o toca ✎ en el teléfono y luego *Proyectar en la PC*). Se abre en el navegador de la PC (presiona *Pantalla completa*) y se controla desde el teléfono: cambias de diapositiva sin simular teclas, las notas van sincronizadas con la página exacta y lo que dibujas en el teléfono (pluma, marcatextos, láser) aparece encima al instante. Funciona igual en Windows, macOS y Linux (también con Wayland), sin permisos especiales. Si guardas cambios en la presentación mientras se transmite, se vuelve a convertir y el navegador y el teléfono se actualizan solos, en la misma diapositiva y sin perder los dibujos. Para .pptx/.odp/.ppt hace falta LibreOffice en la PC (en Windows también sirve PowerPoint); un PDF se proyecta tal cual.
 - **Varias pantallas sincronizadas (modo “Transmitir desde móvil”):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
 - **Cronómetro** de la presentación, solo visible en el teléfono (arriba a la derecha): toca para iniciar o pausar; en pausa aparece ↺ para reiniciarlo. Sigue contando aunque salgas de la app o bloquees el teléfono.
-- **Dibujar sobre la diapositiva (modo “Transmitir desde móvil”):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
+- **Dibujar sobre la diapositiva (modo “Transmitir desde móvil”):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores y **cuatro grosores** (fino, normal, grueso, muy grueso; cada herramienta recuerda el suyo)— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
 - **Por WiFi, las notas llegan desde la PC:** la presentación solo tiene que estar en la computadora.
 - **Modo “Transmitir desde móvil”:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
 - Lee notas de **PowerPoint, LibreOffice, OnlyOffice, WPS, Google Slides exportado** (`.pptx`, `.odp` y variantes).
 - La pantalla del teléfono no se apaga mientras la app está abierta.
+- **Tema claro y oscuro** con acento naranja: sigue el del sistema; se cambia en **Ajustes → Tema** del teléfono o con el botón ☀/☾ de la app de escritorio.
 - **Español e inglés:** usa el idioma del sistema (si no es español, inglés). Se cambia en **Ajustes → Idioma** del teléfono o con el botón de idioma (🌐) de la app de escritorio. La página del modo “Transmitir desde móvil” usa el idioma de la app del teléfono.
 
 ## Modos de conexión
@@ -140,7 +145,7 @@ py tool\build.py                      # → dist\: APK, instalador .exe y .zip
 | Comando | Qué hace | Dónde se puede |
 |---|---|---|
 | `python3 tool/build.py` | Todo lo que se puede compilar en esa computadora | todos |
-| `python3 tool/build.py android` | APK (`dist/SlideRemote-<versión>-android-arm64.apk`, etc.) | todos |
+| `python3 tool/build.py android` | APK (`dist/Zlide-<versión>-android-arm64.apk`, etc.) | todos |
 | `python3 tool/build.py linux` | `.deb` + `.tar.gz` | Linux |
 | `python3 tool/build.py windows` | Instalador `.exe` + `.zip` | Windows |
 | `python3 tool/build.py macos` | `.dmg` | Mac |
@@ -254,7 +259,7 @@ python3 tool/configure.py        # en Windows: py tool\configure.py
 
 > Esas carpetas generadas sí se suben a git (son parte del proyecto); `build/` y los archivos de LibreOffice no (están en `.gitignore`).
 
-La versión de la app está en `pubspec.yaml` (`version: 2.0.0+2` → nombre `2.0.0`, número de compilación `2`). Súbela antes de publicar una actualización.
+La versión de la app está en `pubspec.yaml` (`version: 2.1.0+3` → nombre `2.1.0`, número de compilación `3`). Súbela antes de publicar una actualización.
 
 ## Compilar e instalar / crear instaladores
 
@@ -279,9 +284,9 @@ O copia el `.apk` al teléfono y ábrelo (permite “instalar apps desconocidas�
 **Firma propia (recomendado si vas a distribuir).** Sin ella se usa la llave de depuración de tu PC y otra PC no podría instalar actualizaciones encima. Una sola vez:
 
 ```bash
-keytool -genkey -v -keystore ~/slide-remote.jks -keyalg RSA -keysize 2048 -validity 10000 -alias slideremote
+keytool -genkey -v -keystore ~/zlide.jks -keyalg RSA -keysize 2048 -validity 10000 -alias slideremote
 cat > android/key.properties <<EOF
-storeFile=$HOME/slide-remote.jks
+storeFile=$HOME/zlide.jks
 storePassword=LA_CONTRASEÑA
 keyAlias=slideremote
 keyPassword=LA_CONTRASEÑA
@@ -295,13 +300,13 @@ Guarda el `.jks` y la contraseña en un lugar seguro (sin ellos no puedes actual
 
 ```bash
 tool/package_linux.sh
-# → dist/slide-remote_2.0.0_amd64.deb            (Ubuntu, Debian, Mint, Pop!_OS…)
-# → dist/slide-remote_2.0.0_linux-amd64.tar.gz   (cualquier distribución)
+# → dist/slidy_2.1.0_amd64.deb            (Ubuntu, Debian, Mint, Pop!_OS…)
+# → dist/slidy_2.1.0_linux-amd64.tar.gz   (cualquier distribución)
 
-sudo apt install ./dist/slide-remote_2.0.0_amd64.deb
+sudo apt install ./dist/slidy_2.1.0_amd64.deb
 ```
 
-El `.deb` agrega Slide Remote al menú de aplicaciones e instala la regla de udev para `/dev/uinput` (el permiso para presionar teclas). Si la app dice que falta el permiso, cierra y abre sesión una vez. Desinstalar: `sudo apt remove slide-remote`.
+El `.deb` agrega Zlide al menú de aplicaciones e instala la regla de udev para `/dev/uinput` (el permiso para presionar teclas). Si la app dice que falta el permiso, cierra y abre sesión una vez. Desinstalar: `sudo apt remove zlide`.
 
 Solo probar sin instalar: `flutter run -d linux --release`.
 
@@ -311,8 +316,8 @@ En PowerShell, dentro del proyecto:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1
-# → dist\SlideRemote-Setup-2.0.0.exe            (instalador)
-# → dist\SlideRemote-2.0.0-windows-x64.zip      (portátil: descomprimir y abrir slide_remote.exe)
+# → dist\Zlide-Setup-2.1.0.exe            (instalador)
+# → dist\Zlide-2.1.0-windows-x64.zip      (portátil: descomprimir y abrir slide_remote.exe)
 ```
 
 El instalador crea el acceso en el menú Inicio y agrega la regla del firewall para redes privadas. Incluye las bibliotecas de Visual C++, así que funciona en PCs sin nada extra. Como no está firmado, SmartScreen puede avisar: **Más información → Ejecutar de todas formas**.
@@ -321,10 +326,10 @@ El instalador crea el acceso en el menú Inicio y agrega la regla del firewall p
 
 ```bash
 tool/package_macos.sh
-# → dist/SlideRemote-2.0.0-macos.dmg   (abrir y arrastrar a Aplicaciones)
+# → dist/Zlide-2.1.0-macos.dmg   (abrir y arrastrar a Aplicaciones)
 ```
 
-Sin cuenta de desarrollador de Apple la app va firmada “ad hoc”: la primera vez ábrela con **clic derecho → Abrir** (o `xattr -dr com.apple.quarantine "/Applications/Slide Remote.app"`). Con cuenta de pago puedes firmarla con tu certificado: `SIGN_ID="Developer ID Application: Tu Nombre (EQUIPO)" tool/package_macos.sh` (y notarizarla con `xcrun notarytool` para que abra sin avisos).
+Sin cuenta de desarrollador de Apple la app va firmada “ad hoc”: la primera vez ábrela con **clic derecho → Abrir** (o `xattr -dr com.apple.quarantine "/Applications/Zlide.app"`). Con cuenta de pago puedes firmarla con tu certificado: `SIGN_ID="Developer ID Application: Tu Nombre (EQUIPO)" tool/package_macos.sh` (y notarizarla con `xcrun notarytool` para que abra sin avisos).
 
 ### iPhone (y iPad como control remoto)
 
@@ -363,14 +368,14 @@ El proyecto trae `.github/workflows/build.yml`: GitHub compila en sus servidores
 - Para publicar una versión:
 
   ```bash
-  git tag v2.0.0
+  git tag v2.1.0
   git push --tags
   ```
 
   GitHub crea un **Release** con el APK, `.deb`, `.tar.gz`, `.exe`, `.zip` y `.dmg`, listos para descargar.
 
 - El APK incluye el convertidor si antes subiste LibreOffice con `python3 tool/libreoffice_android.py upload`.
-- **Firma de Android (opcional):** en el repositorio, *Settings → Secrets and variables → Actions*, agrega `ANDROID_KEYSTORE_BASE64` (sale de `base64 -w0 ~/slide-remote.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD`.
+- **Firma de Android (opcional):** en el repositorio, *Settings → Secrets and variables → Actions*, agrega `ANDROID_KEYSTORE_BASE64` (sale de `base64 -w0 ~/zlide.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD`.
 - La de iPhone solo se comprueba que compile (firmarla requiere tu cuenta de Apple; hazlo desde tu Mac).
 
 ## Convertidor a PDF en Android (LibreOffice)
@@ -414,7 +419,7 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 
 **App de escritorio**
 
-- **macOS:** la primera vez pide **Accesibilidad** (Ajustes del Sistema → Privacidad y seguridad → Accesibilidad → activa Slide Remote) y **Bluetooth**. La app trae un botón que abre el ajuste. Si actualizas la app y deja de presionar teclas, quítala de la lista de Accesibilidad y vuelve a agregarla.
+- **macOS:** la primera vez pide **Accesibilidad** (Ajustes del Sistema → Privacidad y seguridad → Accesibilidad → activa Zlide) y **Bluetooth**. La app trae un botón que abre el ajuste. Si actualizas la app y deja de presionar teclas, quítala de la lista de Accesibilidad y vuelve a agregarla.
 - **Linux:** usa `/dev/uinput` (funciona en Wayland y X11). El `.deb` ya lo configura; si no usaste el `.deb`, la app muestra el comando para arreglarlo.
 - **Windows:** el instalador agrega la regla del firewall. Con el `.zip`, al abrirla acepta en **Redes privadas**.
 
@@ -444,7 +449,7 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 | Problema | Qué hacer |
 |---|---|
 | “Esta versión no incluye el convertidor” | Compilaste sin LibreOffice o instalaste el APK equivocado. Corre `tool/build_libreoffice_android.sh --copy-only`, luego `flutter clean` y compila; instala el `arm64-v8a`. |
-| La app se cierra al convertir | Ver el error: `adb logcat \| grep -E "SlideRemote\|LibreOfficeKit\|lo-bootstrap\|DEBUG"`. |
+| La app se cierra al convertir | Ver el error: `adb logcat \| grep -E "Zlide\|LibreOfficeKit\|lo-bootstrap\|DEBUG"`. |
 | El APK pesa más de 200 MB | Vuelve a correr `python3 tool/configure.py` (quita una opción vieja que guardaba todo sin comprimir). |
 | El teléfono no encuentra la PC por WiFi | Misma red; firewall en “Redes privadas”; o “Agregar por IP” con la IP que muestra la app de escritorio. |
 | La app de escritorio recibe pero no cambia la diapositiva | Permiso de Accesibilidad (Mac) o `/dev/uinput` (Linux); la presentación debe estar al frente; prueba “Usar flechas ← →” en Ajustes. |
@@ -453,6 +458,7 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 | `bash\r: No such file or directory` o `$'\r'` al correr un `.sh` | El archivo se guardó con finales de línea de Windows. Con el `.gitattributes` del proyecto no pasa; si ya pasó, arréglalo con `sed -i 's/\r$//' tool/*.sh` (o vuelve a clonar). |
 | PowerShell: “la ejecución de scripts está deshabilitada” | Usa `powershell -ExecutionPolicy Bypass -File …` como en los ejemplos. |
 | `python3 tool/libreoffice_android.py fetch` da 404 | Aún no se sube: en la PC con Linux donde se compiló, `python3 tool/libreoffice_android.py upload`. Si el repo es privado, instala `gh` y `gh auth login`. |
+| Después del cambio de nombre a Zlide | Android/iPhone se actualizan encima (mismo id). En **Linux** el `.deb` de Zlide reemplaza al de Slide Remote. En **Windows** el instalador actualiza la misma instalación. En **Mac** borra `Slide Remote.app` de Aplicaciones y vuelve a activar **Zlide** en Accesibilidad. Si el ícono viejo sigue apareciendo, reinicia el lanzador (o el teléfono). |
 | `SDK XML version 4` (aviso) | No afecta. Se quita actualizando: `sdkmanager --update`. |
 
 ## Estructura del proyecto

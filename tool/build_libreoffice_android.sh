@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compila LibreOffice para Android (arm64) y mete el convertidor de presentaciones → PDF
-# en el plugin de Slide Remote. Se corre UNA vez (y al actualizar LibreOffice).
+# en el plugin de Zlide. Se corre UNA vez (y al actualizar LibreOffice).
 #
 #   tool/build_libreoffice_android.sh               # compilar e instalar en el plugin
 #   tool/build_libreoffice_android.sh --deps        # además instala dependencias con apt
@@ -137,7 +137,7 @@ mkdir -p "$PLUGIN/assets"
 cp -r "$APP/assets/." "$PLUGIN/assets/"
 [[ -d "$APP/assets_strippedUI" ]] && cp -r "$APP/assets_strippedUI/." "$PLUGIN/assets/"
 
-# fontconfig guarda su caché en /data/data/<id de la app>/: usar el id de Slide Remote
+# fontconfig guarda su caché en /data/data/<id de la app>/: usar el id de Zlide
 APP_ID=$(sed -n -E 's/.*applicationId *= *"([^"]+)".*/\1/p' "$ROOT/android/app/build.gradle.kts" 2>/dev/null | head -1)
 APP_ID=${APP_ID:-dev.lgonzo.slide_remote}
 FONTS_CONF="$PLUGIN/assets/unpack/etc/fonts/fonts.conf"

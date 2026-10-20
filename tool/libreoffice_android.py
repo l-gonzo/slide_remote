@@ -132,7 +132,7 @@ def cmd_upload():
         subprocess.run([gh(), "release", "create", TAG, str(out), str(sha), "--repo", r,
                         "--title", f"LibreOffice {VERSION} para Android (convertidor)",
                         "--notes", "Bibliotecas y archivos de LibreOffice para el convertidor a PDF de "
-                                   "Slide Remote en Android. Se instalan con "
+                                   "Zlide en Android. Se instalan con "
                                    "`python3 tool/libreoffice_android.py fetch`. Licencia MPL 2.0."],
                        check=True)
     log("Subido. En cualquier computadora: python3 tool/libreoffice_android.py fetch")

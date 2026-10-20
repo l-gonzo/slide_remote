@@ -31,7 +31,7 @@ final class PptxConverter {
         void done(String error); // null = éxito
     }
 
-    private static final String TAG = "SlideRemote/LO";
+    private static final String TAG = "Zlide/LO";
 
     private static Boolean available;
     private static String unavailableReason;

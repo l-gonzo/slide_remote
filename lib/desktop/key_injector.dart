@@ -128,9 +128,9 @@ class _MacInjector implements KeyInjector {
     if (_loadError != null) return _loadError;
     if (!trusted) {
       return t('macOS necesita permiso de Accesibilidad para presionar teclas. '
-          'Actívalo para Slide Remote y vuelve a abrir la app.',
+          'Actívalo para Zlide y vuelve a abrir la app.',
           'macOS needs the Accessibility permission to press keys. '
-          'Turn it on for Slide Remote and reopen the app.');
+          'Turn it on for Zlide and reopen the app.');
     }
     return null;
   }
@@ -203,8 +203,8 @@ class _LinuxInjector implements KeyInjector {
 
   static const fixCommand =
       'echo \'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"\' '
-      '| sudo tee /etc/udev/rules.d/99-slide-remote.rules >/dev/null '
-      '&& echo uinput | sudo tee /etc/modules-load.d/slide-remote.conf >/dev/null '
+      '| sudo tee /etc/udev/rules.d/99-zlide.rules >/dev/null '
+      '&& echo uinput | sudo tee /etc/modules-load.d/zlide.conf >/dev/null '
       '&& sudo modprobe uinput && sudo udevadm control --reload-rules '
       '&& sudo udevadm trigger --name-match=uinput';
 
@@ -231,7 +231,7 @@ class _LinuxInjector implements KeyInjector {
       final dev = calloc<Uint8>(size);
       try {
         final bytes = dev.asTypedList(size);
-        final name = 'Slide Remote'.codeUnits;
+        final name = 'Zlide'.codeUnits;
         bytes.setRange(0, name.length, name);
         final bd = ByteData.sublistView(bytes);
         bd.setUint16(80, 0x03, Endian.little); // BUS_USB

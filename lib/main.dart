@@ -15,36 +15,46 @@ import 'mobile/remote_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await I18n.load();
+  await AppTheme.load();
   final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
   if (!desktop) {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      statusBarBrightness: Brightness.dark,
-      systemNavigationBarColor: Pal.bg,
-    ));
+    _systemBars();
   }
-  runApp(SlideRemoteApp(desktop: desktop));
+  runApp(SlidyApp(desktop: desktop));
 }
 
-class SlideRemoteApp extends StatefulWidget {
-  const SlideRemoteApp({super.key, required this.desktop});
+/// Barra de estado y de navegación del teléfono con los colores del tema.
+void _systemBars() {
+  final dark = Pal.p.dark;
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: dark ? Brightness.dark : Brightness.light, // iOS
+    systemNavigationBarColor: Pal.bg,
+    systemNavigationBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+  ));
+}
+
+class SlidyApp extends StatefulWidget {
+  const SlidyApp({super.key, required this.desktop});
   final bool desktop;
 
   @override
-  State<SlideRemoteApp> createState() => _SlideRemoteAppState();
+  State<SlidyApp> createState() => _SlidyAppState();
 }
 
-class _SlideRemoteAppState extends State<SlideRemoteApp> with WidgetsBindingObserver {
+class _SlidyAppState extends State<SlidyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppTheme.state.addListener(_themeChanged);
   }
 
   @override
   void dispose() {
+    AppTheme.state.removeListener(_themeChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -53,14 +63,29 @@ class _SlideRemoteAppState extends State<SlideRemoteApp> with WidgetsBindingObse
   void didChangeLocales(List<Locale>? locales) => I18n.systemChanged();
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<String>(
-        valueListenable: I18n.current,
-        builder: (context, lang, _) => MaterialApp(
-          title: 'Slide Remote',
+  void didChangePlatformBrightness() => AppTheme.systemChanged();
+
+  /// Claro ↔ oscuro: los colores se leen de [Pal], así que se redibuja toda la interfaz
+  /// (sin perder el estado de las pantallas).
+  void _themeChanged() {
+    if (!widget.desktop) _systemBars();
+    void mark(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(mark);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildren(mark);
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: Listenable.merge([I18n.current, AppTheme.state]),
+        builder: (context, _) => MaterialApp(
+          title: 'Zlide',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
           // Textos propios de Flutter (menús, "copiar", accesibilidad) en el mismo idioma
-          locale: Locale(lang),
+          locale: Locale(I18n.current.value),
           supportedLocales: const [Locale('es'), Locale('en')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           home: widget.desktop ? const ReceiverPage() : const RemotePage(),

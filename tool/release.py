@@ -69,12 +69,12 @@ def find_installers(v):
     # 2) build/ (si compilaste con flutter directamente): se suben con nombre claro
     apk_dir = ROOT / "build/app/outputs/flutter-apk"
     for abi, label in [("arm64-v8a", "arm64"), ("armeabi-v7a", "armv7"), ("x86_64", "x86_64")]:
-        add("Android", apk_dir / f"app-{abi}-release.apk", f"SlideRemote-{v}-android-{label}.apk")
+        add("Android", apk_dir / f"app-{abi}-release.apk", f"Zlide-{v}-android-{label}.apk")
     if not any(s == "Android" and n.endswith(".apk") for s, _, n in found):
-        add("Android", apk_dir / "app-release.apk", f"SlideRemote-{v}-android.apk")
-    add("Android", ROOT / "build/app/outputs/bundle/release/app-release.aab", f"SlideRemote-{v}-android.aab")
+        add("Android", apk_dir / "app-release.apk", f"Zlide-{v}-android.apk")
+    add("Android", ROOT / "build/app/outputs/bundle/release/app-release.aab", f"Zlide-{v}-android.aab")
     for ipa in sorted((ROOT / "build/ios/ipa").glob("*.ipa")):
-        add("iPhone", ipa, f"SlideRemote-{v}-ios.ipa")
+        add("iPhone", ipa, f"Zlide-{v}-ios.ipa")
     return found
 
 
@@ -88,7 +88,7 @@ def gh():
 def main():
     ap = argparse.ArgumentParser(description="Sube los instaladores a un Release de GitHub.")
     ap.add_argument("--tag", help="etiqueta del release (por defecto v<versión de pubspec.yaml>)")
-    ap.add_argument("--title", help="título (por defecto 'Slide Remote <versión>')")
+    ap.add_argument("--title", help="título (por defecto 'Zlide <versión>')")
     ap.add_argument("--notes", help="texto del release (por defecto, notas generadas por GitHub)")
     ap.add_argument("--draft", action="store_true", help="crear como borrador (no se publica aún)")
     ap.add_argument("--prerelease", action="store_true", help="marcar como versión de prueba")
@@ -140,7 +140,7 @@ def main():
         else:
             print(f"\nCreando el release {tag}…")
             cmd = [exe, "release", "create", tag, *upload, *repo_args,
-                   "--title", a.title or f"Slide Remote {v}"]
+                   "--title", a.title or f"Zlide {v}"]
             cmd += ["--notes", a.notes] if a.notes else ["--generate-notes"]
             if a.draft:
                 cmd.append("--draft")

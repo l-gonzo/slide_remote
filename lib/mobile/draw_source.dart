@@ -195,14 +195,14 @@ class WifiDrawSource extends DrawSource {
       return _error ??
           (_connecting
               ? t('Conectando con la PC…', 'Connecting to the computer…')
-              : t('Abre Slide Remote en la PC', 'Open Slide Remote on the computer'));
+              : t('Abre Zlide en la PC', 'Open Zlide on the computer'));
     }
     if (_pcError != null) return _pcError;
     if (_converting) return t('La PC está preparando la presentación…', 'The computer is preparing the presentation…');
     if (!_presenting) {
-      return t('Para dibujar, la PC proyecta la presentación con Slide Remote. Toca “Proyectar en la PC” '
+      return t('Para dibujar, la PC proyecta la presentación con Zlide. Toca “Proyectar en la PC” '
           '(antes elige la presentación en la app de escritorio).',
-          'To draw, the computer presents with Slide Remote. Tap “Present on the computer” '
+          'To draw, the computer presents with Zlide. Tap “Present on the computer” '
           '(choose the presentation in the desktop app first).');
     }
     if (_downloading || _pdfPath == null) return t('Recibiendo la presentación…', 'Receiving the presentation…');

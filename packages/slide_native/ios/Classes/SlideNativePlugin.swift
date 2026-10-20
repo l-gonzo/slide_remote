@@ -11,13 +11,13 @@ enum SlideLang {
     static func t(_ spanish: String, _ english: String) -> String { es ? spanish : english }
 }
 
-/// Puente nativo de Slide Remote para iOS.
+/// Puente nativo de Zlide para iOS.
 ///
 /// - Botones de volumen: iOS no da acceso directo, así que se observa `outputVolume` de la sesión
 ///   de audio y se regresa el volumen a 50 % después de cada pulsación (así siempre hay margen
 ///   para detectar subir y bajar). Un `MPVolumeView` invisible oculta el indicador del sistema.
 /// - Bluetooth: iOS no permite que una app sea un teclado Bluetooth, así que el iPhone anuncia
-///   un servicio BLE propio al que se conecta la app de escritorio de Slide Remote.
+///   un servicio BLE propio al que se conecta la app de escritorio de Zlide.
 public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBPeripheralManagerDelegate {
 
     // Deben coincidir con lib/common/protocol.dart
@@ -288,7 +288,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         if !pm.isAdvertising {
             pm.startAdvertising([
                 CBAdvertisementDataServiceUUIDsKey: [SlideNativePlugin.serviceUUID],
-                CBAdvertisementDataLocalNameKey: "Slide Remote",
+                CBAdvertisementDataLocalNameKey: "Zlide",
             ])
         }
         emitBle(subscribers.isEmpty ? "advertising" : "connected")

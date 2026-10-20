@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Crea los instaladores de la app de escritorio para Linux:
-#   dist/slide-remote_<versión>_<arq>.deb      (Ubuntu, Debian, Mint, Pop!_OS…)
-#   dist/slide-remote_<versión>_linux-<arq>.tar.gz   (cualquier distribución)
+#   dist/slidy_<versión>_<arq>.deb      (Ubuntu, Debian, Mint, Pop!_OS…)
+#   dist/slidy_<versión>_linux-<arq>.tar.gz   (cualquier distribución)
 #
 #   tool/package_linux.sh            # compila y empaqueta
 #   tool/package_linux.sh --no-build # solo empaqueta lo ya compilado
@@ -24,7 +24,7 @@ case "$DEB_ARCH" in
   *) echo "Arquitectura no soportada: $DEB_ARCH"; exit 1 ;;
 esac
 BUNDLE="build/linux/$FL_ARCH/release/bundle"
-PKG=slide-remote
+PKG=zlide
 DIST="$ROOT/dist"
 
 if [[ $BUILD -eq 1 ]]; then
@@ -39,24 +39,24 @@ trap 'rm -rf "$STAGE"' EXIT
 
 # ------------------------------------------------------------------ .tar.gz portátil
 echo "==> .tar.gz"
-cp -r "$BUNDLE" "$STAGE/slide-remote"
-cp assets/icon/icon.png "$STAGE/slide-remote/slide-remote.png"
-cat > "$STAGE/slide-remote/LEEME.txt" <<'EOF'
-Slide Remote (app de escritorio)
+cp -r "$BUNDLE" "$STAGE/zlide"
+cp assets/icon/icon.png "$STAGE/zlide/zlide.png"
+cat > "$STAGE/zlide/LEEME.txt" <<'EOF'
+Zlide (app de escritorio)
 
 Ejecuta ./slide_remote
 
 Para que pueda presionar teclas necesita permiso sobre /dev/uinput. Ejecuta una vez:
 
-  echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-slide-remote.rules
-  echo uinput | sudo tee /etc/modules-load.d/slide-remote.conf
+  echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-zlide.rules
+  echo uinput | sudo tee /etc/modules-load.d/zlide.conf
   sudo modprobe uinput && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=uinput
 
 y cierra y abre sesión.
 EOF
 TAR="$DIST/${PKG}_${VERSION}_linux-${DEB_ARCH}.tar.gz"
-tar -C "$STAGE" -czf "$TAR" slide-remote
-rm -rf "$STAGE/slide-remote"
+tar -C "$STAGE" -czf "$TAR" zlide
+rm -rf "$STAGE/zlide"
 
 # ------------------------------------------------------------------ .deb
 echo "==> .deb"
@@ -70,7 +70,7 @@ cp assets/icon/icon.png "$D/usr/share/icons/hicolor/256x256/apps/$PKG.png"
 cat > "$D/usr/share/applications/$PKG.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Slide Remote
+Name=Zlide
 Comment=Change slides from your phone
 Comment[es]=Cambia las diapositivas desde el teléfono
 Exec=/opt/$PKG/slide_remote
@@ -81,8 +81,8 @@ StartupWMClass=slide_remote
 EOF
 
 echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' \
-  > "$D/usr/lib/udev/rules.d/70-slide-remote.rules"
-echo uinput > "$D/usr/lib/modules-load.d/slide-remote.conf"
+  > "$D/usr/lib/udev/rules.d/70-zlide.rules"
+echo uinput > "$D/usr/lib/modules-load.d/zlide.conf"
 
 SIZE_KB=$(du -sk "$D" | cut -f1)
 cat > "$D/DEBIAN/control" <<EOF
@@ -92,12 +92,15 @@ Architecture: $DEB_ARCH
 Maintainer: Luis Gonzalo Méndez <l-gonzo@users.noreply.github.com>
 Installed-Size: $SIZE_KB
 Depends: libgtk-3-0t64 | libgtk-3-0
+Replaces: slide-remote, slidy
+Conflicts: slide-remote, slidy
+Provides: slide-remote
 Recommends: libreoffice-impress
 Section: utils
 Priority: optional
 Homepage: https://github.com/l-gonzo/slide_remote
 Description: Cambia las diapositivas con los botones de volumen del teléfono
- Receptor de escritorio de Slide Remote: recibe los comandos del teléfono por WiFi o
+ Receptor de escritorio de Zlide: recibe los comandos del teléfono por WiFi o
  Bluetooth LE y presiona AvPág/RePág, y manda las notas del presentador al teléfono.
 EOF
 

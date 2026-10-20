@@ -195,7 +195,7 @@ final class BtHidKeyboard {
 
     private void register(BluetoothHidDevice h) {
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
-                "Slide Remote", "Slide remote control", "l-gonzo",
+                "Zlide", "Slide remote control", "l-gonzo",
                 BluetoothHidDevice.SUBCLASS1_KEYBOARD, DESCRIPTOR);
         if (!h.registerApp(sdp, null, null, executor, hidCallback)) {
             emit(State.IDLE, null, Lang.t("No se pudo activar el teclado Bluetooth", "Could not start the Bluetooth keyboard"));

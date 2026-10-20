@@ -1,4 +1,4 @@
-# Prepara una PC con Windows 10/11 desde cero para compilar Slide Remote
+# Prepara una PC con Windows 10/11 desde cero para compilar Zlide
 # (app de Windows y, opcional, Android). Usa winget.
 #
 #   powershell -ExecutionPolicy Bypass -File tool\setup_windows.ps1
@@ -108,5 +108,5 @@ py tool\build.py doctor
 
 Write-Host ''
 Write-Host 'Listo. Abre una PowerShell nueva y compila con:'
-Write-Host '    py tool\build.py windows    # dist\SlideRemote-Setup-<versión>.exe y .zip'
+Write-Host '    py tool\build.py windows    # dist\Zlide-Setup-<versión>.exe y .zip'
 if ($Android) { Write-Host '    py tool\build.py android    # APK' }

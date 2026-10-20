@@ -61,7 +61,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
                       'Keep this window open (it can be minimized) and bring your presentation to the front. '
                       'With Android over Bluetooth you don’t need this app: the phone works as a keyboard.'),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Pal.muted, fontSize: 12.5, height: 1.5),
+                  style: TextStyle(color: Pal.muted, fontSize: 12.5, height: 1.5),
                 ),
               ]),
             ),
@@ -72,17 +72,12 @@ class _ReceiverPageState extends State<ReceiverPage> {
   }
 
   Widget _header() => Row(children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(color: Pal.accent, borderRadius: BorderRadius.circular(14)),
-          child: const Icon(Icons.slideshow_rounded, color: Pal.onAccent, size: 28),
-        ),
-        const SizedBox(width: 14),
+        Image.asset('assets/icon/logo.png', width: 60, height: 60, filterQuality: FilterQuality.medium),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Slide Remote', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            Text(t('Receptor para la PC', 'Receiver for the computer'), style: const TextStyle(color: Pal.muted)),
+            const Text('Zlide', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+            Text(t('Receptor para la PC', 'Receiver for the computer'), style: TextStyle(color: Pal.muted)),
           ]),
         ),
         Container(
@@ -93,19 +88,34 @@ class _ReceiverPageState extends State<ReceiverPage> {
             border: Border.all(color: Pal.stroke),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.computer, size: 16, color: Pal.muted),
+            Icon(Icons.computer, size: 16, color: Pal.muted),
             const SizedBox(width: 8),
             Text(c.hostName, style: const TextStyle(fontWeight: FontWeight.w600)),
           ]),
         ),
         const SizedBox(width: 6),
+        _themeMenu(),
         _languageMenu(),
       ]);
+
+  /// Tema: Sistema / Claro / Oscuro.
+  Widget _themeMenu() => PopupMenuButton<ThemePref>(
+        tooltip: t('Tema', 'Theme'),
+        icon: Icon(Pal.p.dark ? Icons.dark_mode_rounded : Icons.light_mode_rounded, color: Pal.muted),
+        color: Pal.cardHi,
+        initialValue: AppTheme.pref,
+        onSelected: AppTheme.setPref,
+        itemBuilder: (_) => [
+          PopupMenuItem(value: ThemePref.system, child: Text(t('Tema del sistema', 'System theme'))),
+          PopupMenuItem(value: ThemePref.light, child: Text(t('Claro', 'Light'))),
+          PopupMenuItem(value: ThemePref.dark, child: Text(t('Oscuro', 'Dark'))),
+        ],
+      );
 
   /// Idioma: Sistema / Español / English.
   Widget _languageMenu() => PopupMenuButton<LangPref>(
         tooltip: t('Idioma', 'Language'),
-        icon: const Icon(Icons.translate_rounded, color: Pal.muted),
+        icon: Icon(Icons.translate_rounded, color: Pal.muted),
         color: Pal.cardHi,
         initialValue: I18n.pref,
         onSelected: (p) {
@@ -159,9 +169,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
             const SizedBox(height: 4),
             Text(
               l == null
-                  ? t('Abre Slide Remote en el teléfono y presiona volumen.', 'Open Slide Remote on the phone and press volume.')
+                  ? t('Abre Zlide en el teléfono y presiona volumen.', 'Open Zlide on the phone and press volume.')
                   : '${t('Por', 'Via')} ${l.source}  ·  ${c.count} ${c.count == 1 ? t('cambio', 'change') : t('cambios', 'changes')}',
-              style: const TextStyle(color: Pal.muted),
+              style: TextStyle(color: Pal.muted),
             ),
           ]),
         ),
@@ -202,7 +212,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
                     'y con “Proyectar en esta PC” también podrás dibujar sobre ella desde el teléfono.',
                     'Choose your presentation here (PowerPoint, LibreOffice, OnlyOffice, PDF…). The phone will show its notes over WiFi, '
                     'and with “Present on this computer” you can also draw on it from the phone.'),
-                style: const TextStyle(color: Pal.muted, height: 1.4),
+                style: TextStyle(color: Pal.muted, height: 1.4),
               )
             else ...[
               Text(n.name ?? t('presentación', 'presentation'),
@@ -215,25 +225,25 @@ class _ReceiverPageState extends State<ReceiverPage> {
                         'Si guardas cambios en el archivo, se actualizan solas.',
                         '${n.slideCount} slides · ${n.withNotes} with notes. '
                         'If you save changes to the file, they update automatically.'),
-                style: const TextStyle(color: Pal.muted, height: 1.4, fontSize: 13),
+                style: TextStyle(color: Pal.muted, height: 1.4, fontSize: 13),
               ),
             ],
             if (p.converting) ...[
               const SizedBox(height: 6),
               Text(t('Preparando la presentación para proyectar…', 'Preparing the presentation for presenting…'),
-                  style: const TextStyle(color: Pal.busy, fontSize: 13)),
+                  style: TextStyle(color: Pal.busy, fontSize: 13)),
             ] else if (p.active) ...[
               const SizedBox(height: 6),
               Text(
                 '${t('Proyectando en el navegador', 'Presenting in the browser')} · '
                 '${p.total > 0 ? t('diapositiva ${p.page} de ${p.total}', 'slide ${p.page} of ${p.total}') : '…'}'
                 '${p.viewers == 0 ? ' · ${t('abre la ventana del navegador', 'open the browser window')}' : ''}',
-                style: const TextStyle(color: Pal.ok, fontSize: 13, height: 1.4),
+                style: TextStyle(color: Pal.ok, fontSize: 13, height: 1.4),
               ),
             ],
             if (n.error != null || p.error != null) ...[
               const SizedBox(height: 6),
-              Text((p.error ?? n.error)!, style: const TextStyle(color: Pal.error, height: 1.4, fontSize: 13)),
+              Text((p.error ?? n.error)!, style: TextStyle(color: Pal.error, height: 1.4, fontSize: 13)),
             ],
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -266,7 +276,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
                     'con dibujo y notas sincronizadas. Para .pptx/.odp hace falta LibreOffice (o PowerPoint en Windows).',
                     'Present on this computer: the presentation opens full screen in the browser and you control it from the phone, '
                     'with drawing and synced notes. .pptx/.odp need LibreOffice (or PowerPoint on Windows).'),
-                style: const TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
+                style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
               ),
             ],
           ]),
@@ -286,9 +296,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          const Icon(Icons.lock_outline, color: Pal.error, size: 20),
+          Icon(Icons.lock_outline, color: Pal.error, size: 20),
           const SizedBox(width: 8),
-          Text(t('Falta un permiso', 'A permission is missing'), style: const TextStyle(fontWeight: FontWeight.w700, color: Pal.error)),
+          Text(t('Falta un permiso', 'A permission is missing'), style: TextStyle(fontWeight: FontWeight.w700, color: Pal.error)),
         ]),
         const SizedBox(height: 8),
         Text(c.injector.problem!, style: const TextStyle(height: 1.45)),
@@ -331,7 +341,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
               Dot(connColor(conn)),
             ]),
             const SizedBox(height: 4),
-            Text(detail, style: const TextStyle(color: Pal.muted, height: 1.4)),
+            Text(detail, style: TextStyle(color: Pal.muted, height: 1.4)),
             if (extra != null) ...[
               const SizedBox(height: 6),
               SelectableText(extra, style: monoStyle.copyWith(fontSize: 12, color: Pal.muted)),
@@ -376,9 +386,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
     final (conn, detail) = switch (c.bleStatus) {
       BleStatus.connected => (Conn.on, '${t('Conectado a', 'Connected to')} ${c.bleDeviceName ?? 'iPhone'}'),
       BleStatus.connecting => (Conn.busy, t('Conectando con ${c.bleDeviceName ?? 'el iPhone'}…', 'Connecting to ${c.bleDeviceName ?? 'the iPhone'}…')),
-      BleStatus.searching => (Conn.busy, t('Buscando el iPhone. Abre Slide Remote y elige “Control Bluetooth”.', 'Looking for the iPhone. Open Slide Remote and choose “Bluetooth control”.')),
+      BleStatus.searching => (Conn.busy, t('Buscando el iPhone. Abre Zlide y elige “Control Bluetooth”.', 'Looking for the iPhone. Open Zlide and choose “Bluetooth control”.')),
       BleStatus.off => (Conn.error, t('El Bluetooth de la PC está apagado.', 'The computer’s Bluetooth is off.')),
-      BleStatus.unauthorized => (Conn.error, t('Permite el uso de Bluetooth a Slide Remote en los ajustes del sistema.', 'Allow Slide Remote to use Bluetooth in the system settings.')),
+      BleStatus.unauthorized => (Conn.error, t('Permite el uso de Bluetooth a Zlide en los ajustes del sistema.', 'Allow Zlide to use Bluetooth in the system settings.')),
       BleStatus.unsupported => (Conn.off, t('Esta PC no tiene Bluetooth LE.', 'This computer has no Bluetooth LE.')),
       BleStatus.unknown => (Conn.off, t('Iniciando…', 'Starting…')),
     };

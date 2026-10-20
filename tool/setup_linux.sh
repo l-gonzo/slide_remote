@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepara una computadora con Linux (Ubuntu/Debian) desde cero para compilar Slide Remote:
+# Prepara una computadora con Linux (Ubuntu/Debian) desde cero para compilar Zlide:
 # Flutter, compilador de la app de Linux, Java 17 y el SDK de Android. Luego prepara el proyecto.
 #
 #   bash tool/setup_linux.sh               # todo

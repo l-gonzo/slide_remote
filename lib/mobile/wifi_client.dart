@@ -46,7 +46,7 @@ class WifiClient extends ChangeNotifier {
   /// La PC anunció sus notas: (versión, puerto HTTP). Versión 0 = la PC no tiene notas.
   void Function(int version, int port)? onNotes;
 
-  /// La PC proyecta con Slide Remote: (página, total). 0 0 = no está proyectando.
+  /// La PC proyecta con Zlide: (página, total). 0 0 = no está proyectando.
   void Function(int page, int total)? onPage;
 
   /// Dirección de la PC elegida (para pedirle las notas).

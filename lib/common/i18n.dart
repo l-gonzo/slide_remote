@@ -21,7 +21,8 @@ abstract final class I18n {
   /// Leer la preferencia guardada (llamar antes de runApp).
   static Future<void> load() async {
     try {
-      final p = await SharedPreferences.getInstance();
+      // Con límite de tiempo: si las preferencias fallan, la app abre igual con lo predeterminado
+      final p = await SharedPreferences.getInstance().timeout(const Duration(seconds: 2));
       pref = LangPref.values.firstWhere((v) => v.name == p.getString(_key), orElse: () => LangPref.system);
     } catch (_) {
       pref = LangPref.system;

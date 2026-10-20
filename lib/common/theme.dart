@@ -1,20 +1,124 @@
-import 'package:flutter/material.dart';
+import 'dart:ui' show PlatformDispatcher;
 
-/// Paleta "medianoche": azul marino profundo, acento coral para las acciones y verde menta
-/// para "conectado".
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Colores de un tema. Naranja de software de presentación como acento, con tonos cálidos
+/// claros (tema claro) u oscuros (tema oscuro).
+class Palette {
+  const Palette({
+    required this.dark,
+    required this.bg,
+    required this.card,
+    required this.cardHi,
+    required this.stroke,
+    required this.text,
+    required this.muted,
+    required this.accent,
+    required this.onAccent,
+    required this.ok,
+    required this.busy,
+    required this.error,
+    required this.off,
+  });
+  final bool dark;
+  final Color bg, card, cardHi, stroke, text, muted, accent, onAccent, ok, busy, error, off;
+
+  static const darkPalette = Palette(
+    dark: true,
+    bg: Color(0xFF141110),
+    card: Color(0xFF1F1A18),
+    cardHi: Color(0xFF2B2421),
+    stroke: Color(0xFF3B322E),
+    text: Color(0xFFF7F1ED),
+    muted: Color(0xFFB4A69E),
+    accent: Color(0xFFF26522), // naranja
+    onAccent: Color(0xFFFFFFFF),
+    ok: Color(0xFF3FD48A),
+    busy: Color(0xFFFFC24B),
+    error: Color(0xFFFF5E6C),
+    off: Color(0xFF6F635C),
+  );
+
+  static const lightPalette = Palette(
+    dark: false,
+    bg: Color(0xFFFFF7F2),
+    card: Color(0xFFFFFFFF),
+    cardHi: Color(0xFFFCEBE1),
+    stroke: Color(0xFFF0D9CC),
+    text: Color(0xFF2B1A12),
+    muted: Color(0xFF7C665A),
+    accent: Color(0xFFD9480F), // naranja (más profundo para que se lea sobre blanco)
+    onAccent: Color(0xFFFFFFFF),
+    ok: Color(0xFF16955A),
+    busy: Color(0xFFB97800),
+    error: Color(0xFFD42A3C),
+    off: Color(0xFFB3A196),
+  );
+}
+
+/// Colores del tema en uso. Cambian al elegir claro/oscuro (la app se redibuja completa).
 abstract final class Pal {
-  static const bg = Color(0xFF0D1020);
-  static const card = Color(0xFF161A2E);
-  static const cardHi = Color(0xFF20253D);
-  static const stroke = Color(0xFF2C3252);
-  static const text = Color(0xFFEEF0FA);
-  static const muted = Color(0xFF9097B8);
-  static const accent = Color(0xFFFF7A59); // coral
-  static const onAccent = Color(0xFF1E0B05);
-  static const ok = Color(0xFF3DDC97); // menta
-  static const busy = Color(0xFFFFC24B);
-  static const error = Color(0xFFFF5C7A);
-  static const off = Color(0xFF5A6185);
+  static Palette p = Palette.darkPalette;
+  static Color get bg => p.bg;
+  static Color get card => p.card;
+  static Color get cardHi => p.cardHi;
+  static Color get stroke => p.stroke;
+  static Color get text => p.text;
+  static Color get muted => p.muted;
+  static Color get accent => p.accent;
+  static Color get onAccent => p.onAccent;
+  static Color get ok => p.ok;
+  static Color get busy => p.busy;
+  static Color get error => p.error;
+  static Color get off => p.off;
+}
+
+/// Tema elegido en Ajustes. [system] = claro u oscuro según el sistema.
+enum ThemePref { system, light, dark }
+
+abstract final class AppTheme {
+  static const _key = 'theme';
+  static ThemePref pref = ThemePref.system;
+
+  /// (preferencia, ¿oscuro?). La interfaz escucha este valor para redibujarse.
+  static final ValueNotifier<(ThemePref, bool)> state = ValueNotifier((ThemePref.system, true));
+
+  static bool get dark => state.value.$2;
+
+  static Future<void> load() async {
+    try {
+      // Con límite de tiempo: si las preferencias fallan, la app abre igual con lo predeterminado
+      final p = await SharedPreferences.getInstance().timeout(const Duration(seconds: 2));
+      pref = ThemePref.values.firstWhere((v) => v.name == p.getString(_key), orElse: () => ThemePref.system);
+    } catch (_) {
+      pref = ThemePref.system;
+    }
+    _apply();
+  }
+
+  static Future<void> setPref(ThemePref p) async {
+    pref = p;
+    _apply();
+    try {
+      await (await SharedPreferences.getInstance()).setString(_key, p.name);
+    } catch (_) {}
+  }
+
+  /// El sistema cambió entre claro y oscuro.
+  static void systemChanged() {
+    if (pref == ThemePref.system) _apply();
+  }
+
+  static void _apply() {
+    final d = switch (pref) {
+      ThemePref.light => false,
+      ThemePref.dark => true,
+      ThemePref.system => PlatformDispatcher.instance.platformBrightness == Brightness.dark,
+    };
+    Pal.p = d ? Palette.darkPalette : Palette.lightPalette;
+    state.value = (pref, d);
+  }
 }
 
 enum Conn { off, busy, on, error }
@@ -35,42 +139,53 @@ class ConnView {
 }
 
 ThemeData buildTheme() {
-  const scheme = ColorScheme.dark(
+  final scheme = (Pal.p.dark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
     primary: Pal.accent,
     onPrimary: Pal.onAccent,
     secondary: Pal.accent,
     onSecondary: Pal.onAccent,
     surface: Pal.card,
     onSurface: Pal.text,
+    onSurfaceVariant: Pal.muted,
+    outline: Pal.stroke,
     error: Pal.error,
   );
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: const BorderSide(color: Pal.stroke),
+    borderSide: BorderSide(color: Pal.stroke),
   );
   return ThemeData(
     useMaterial3: true,
+    brightness: Pal.p.dark ? Brightness.dark : Brightness.light,
     colorScheme: scheme,
     scaffoldBackgroundColor: Pal.bg,
     canvasColor: Pal.cardHi,
     splashFactory: InkRipple.splashFactory,
+    // Sin color fijo en las llamadas: así la hoja de Ajustes cambia al momento de tema
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: Pal.card,
+      modalBackgroundColor: Pal.card,
+      dragHandleColor: Pal.off,
+    ),
+    popupMenuTheme: PopupMenuThemeData(color: Pal.cardHi),
+    iconTheme: IconThemeData(color: Pal.text),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: Pal.cardHi,
-      contentTextStyle: const TextStyle(color: Pal.text, fontSize: 15),
+      contentTextStyle: TextStyle(color: Pal.text, fontSize: 15),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Pal.stroke),
+        side: BorderSide(color: Pal.stroke),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Pal.cardHi,
-      hintStyle: const TextStyle(color: Pal.off),
-      labelStyle: const TextStyle(color: Pal.muted),
+      hintStyle: TextStyle(color: Pal.off),
+      labelStyle: TextStyle(color: Pal.muted),
       border: border,
       enabledBorder: border,
-      focusedBorder: border.copyWith(borderSide: const BorderSide(color: Pal.accent)),
+      focusedBorder: border.copyWith(borderSide: BorderSide(color: Pal.accent)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     ),
   );
@@ -104,7 +219,7 @@ class Caption extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(
           text.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             color: Pal.muted,
             fontSize: 11,
             fontWeight: FontWeight.w600,
@@ -175,7 +290,7 @@ class StatusChip extends StatelessWidget {
                 sub,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Pal.muted, fontSize: 12),
+                style: TextStyle(color: Pal.muted, fontSize: 12),
               ),
             ),
         ],
@@ -199,7 +314,7 @@ class PillButton extends StatelessWidget {
       color: primary ? Pal.accent : Pal.cardHi,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: primary ? BorderSide.none : const BorderSide(color: Pal.stroke),
+        side: primary ? BorderSide.none : BorderSide(color: Pal.stroke),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(

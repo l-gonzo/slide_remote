@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genera las carpetas de plataforma de Flutter y les aplica la configuración de Slide Remote.
+Genera las carpetas de plataforma de Flutter y les aplica la configuración de Zlide.
 
     python3 tool/configure.py
 
@@ -8,7 +8,7 @@ Se puede volver a ejecutar sin problema (es idempotente). Hace:
   1. flutter create (solo agrega lo que falta; no toca lib/ ni pubspec.yaml)
   2. permisos y textos en Info.plist (iOS/macOS), entitlements de macOS (sin sandbox, Bluetooth)
   3. versión mínima iOS 14 / macOS 10.15
-  4. nombre "Slide Remote" y tamaño de ventana en escritorio
+  4. nombre "Zlide" y tamaño de ventana en escritorio
   5. flutter pub get + íconos
 """
 import os
@@ -30,14 +30,14 @@ if sys.platform == "win32":
     except Exception:
         pass
 PLATFORMS = "android,ios,macos,windows,linux"
-APP_NAME = "Slide Remote"
+APP_NAME = "Zlide"
 BONJOUR = ["_slideremote._udp"]
 
 # iOS solo muestra un texto por permiso (sin archivos .lproj en el proyecto): va en los dos idiomas.
-BT_TEXT = ("Slide Remote uses Bluetooth to change your presentation slides. / "
-           "Slide Remote usa Bluetooth para cambiar las diapositivas de tu presentación.")
-LAN_TEXT = ("Slide Remote uses the local network to find your computer and show your presentation. / "
-            "Slide Remote usa la red local para encontrar tu computadora y proyectar tu presentación.")
+BT_TEXT = ("Zlide uses Bluetooth to change your presentation slides. / "
+           "Zlide usa Bluetooth para cambiar las diapositivas de tu presentación.")
+LAN_TEXT = ("Zlide uses the local network to find your computer and show your presentation. / "
+            "Zlide usa la red local para encontrar tu computadora y proyectar tu presentación.")
 # Idiomas de la app (para que iOS/macOS muestren sus diálogos del sistema en el idioma correcto)
 LOCALIZATIONS = ["en", "es"]
 
@@ -167,6 +167,22 @@ def main():
 
     edit_text(ROOT / "android/app/build.gradle.kts", gradle_signing)
 
+    def gradle_no_minify(s):
+        # Sin R8 (minify) en release: plugins como shared_preferences llaman a Kotlin desde Dart
+        # por JNI y R8 no ve esas llamadas; quitaba clases (kotlin.Result, ...) y la app se
+        # quedaba cargando al abrir. El tamaño del APK casi no cambia (lo pesado es nativo).
+        if "isMinifyEnabled" in s:
+            return s
+        m = re.search(r"(\n(\s*)release \{\n)", s)
+        if not m:
+            return s
+        ind = m.group(2) + "    "
+        ins = (f"{ind}isMinifyEnabled = false\n"
+               f"{ind}isShrinkResources = false\n")
+        return s[:m.end()] + ins + s[m.end():]
+
+    edit_text(ROOT / "android/app/build.gradle.kts", gradle_no_minify)
+
     # ------------------------------------------------------------------ 3. iOS
     log("iOS: permisos, Bonjour y versión mínima 14.0")
 
@@ -214,11 +230,14 @@ def main():
 
     # ------------------------------------------------------------------ 5. Windows / Linux
     log("Windows y Linux: título y tamaño de ventana")
-    edit_text(ROOT / "windows/runner/main.cpp", lambda s: s
-              .replace('window.Create(L"slide_remote"', f'window.Create(L"{APP_NAME}"')
+    # Con expresiones regulares para que también cambie el nombre en carpetas ya configuradas
+    edit_text(ROOT / "windows/runner/main.cpp", lambda s: re.sub(
+              r'window\.Create\(L"[^"]*"', f'window.Create(L"{APP_NAME}"', s)
               .replace("Win32Window::Size size(1280, 720);", "Win32Window::Size size(640, 820);"))
-    edit_text(ROOT / "linux/runner/my_application.cc", lambda s: s
-              .replace('"slide_remote"', f'"{APP_NAME}"')
+    edit_text(ROOT / "windows/runner/Runner.rc", lambda s: re.sub(
+              r'(VALUE "(?:FileDescription|ProductName)", )"[^"]*"', rf'\1"{APP_NAME}"', s))
+    edit_text(ROOT / "linux/runner/my_application.cc", lambda s: re.sub(
+              r'(gtk_(?:header_bar|window)_set_title\((?:header_bar|window), )"[^"]*"', rf'\1"{APP_NAME}"', s)
               .replace("gtk_window_set_default_size(window, 1280, 720);",
                        "gtk_window_set_default_size(window, 640, 820);"))
 

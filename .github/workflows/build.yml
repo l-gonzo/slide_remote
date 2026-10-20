@@ -1,4 +1,4 @@
-# Compila Slide Remote en los servidores de GitHub para todos los sistemas.
+# Compila Zlide en los servidores de GitHub para todos los sistemas.
 #  - En cada push a main y en cada pull request: compila y deja los archivos en "Artifacts".
 #  - Al subir una etiqueta v* (git tag v2.0.0 && git push --tags): además crea un Release con
 #    los instaladores (.apk, .deb, .tar.gz, .exe, .zip, .dmg).

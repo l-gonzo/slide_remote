@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../common/i18n.dart';
 import '../common/theme.dart';
@@ -35,10 +36,40 @@ class _DrawPageState extends State<DrawPage> {
     Color(0xFF111111),
   ];
 
+  /// Grosores: multiplicadores del tamaño normal de cada herramienta.
+  static const _sizes = [0.5, 1.0, 1.8, 3.0];
+
   InkTool _tool = InkTool.pen;
   Color _penColor = _colors[0];
   Color _hlColor = _colors[1];
   bool _landscape = false;
+
+  /// Grosor elegido (índice de [_sizes]) por herramienta. Se recuerda entre sesiones.
+  final Map<InkTool, int> _size = {for (final tool in InkTool.values) tool: 1};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSizes();
+  }
+
+  Future<void> _loadSizes() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        for (final tool in InkTool.values) {
+          _size[tool] = (p.getInt('ink_size_${tool.name}') ?? 1).clamp(0, _sizes.length - 1);
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _setSize(int i) {
+    setState(() => _size[_tool] = i);
+    final tool = _tool;
+    SharedPreferences.getInstance().then((p) => p.setInt('ink_size_${tool.name}', i)).catchError((_) => false);
+  }
 
 
   late final DrawSource src = widget.wifi ? WifiDrawSource(c, widget.wifiUri!) : BrowserDrawSource(c);
@@ -128,7 +159,7 @@ class _DrawPageState extends State<DrawPage> {
       if (!src.connected)
         Tooltip(
           message: src.offlineHint ?? '',
-          child: const Icon(Icons.cloud_off_rounded, size: 18, color: Pal.busy),
+          child: Icon(Icons.cloud_off_rounded, size: 18, color: Pal.busy),
         ),
       if (src.canRefresh && !compact)
         IconButton(
@@ -171,14 +202,14 @@ class _DrawPageState extends State<DrawPage> {
                     child: Center(
                       child: src.failed(page)
                           ? Text(t('No se pudo mostrar la diapositiva', 'Could not show the slide'),
-                              style: const TextStyle(color: Pal.muted))
+                              style: TextStyle(color: Pal.muted))
                           : !src.connected && widget.wifi
                               ? Padding(
                                   padding: const EdgeInsets.all(16),
                                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                                     Flexible(
                                       child: Text(src.offlineHint ?? '',
-                                          textAlign: TextAlign.center, style: const TextStyle(color: Pal.muted, height: 1.35)),
+                                          textAlign: TextAlign.center, style: TextStyle(color: Pal.muted, height: 1.35)),
                                     ),
                                     if (src case final WifiDrawSource w when w.canStart) ...[
                                       const SizedBox(height: 10),
@@ -208,10 +239,12 @@ class _DrawPageState extends State<DrawPage> {
 
   void _begin(Offset p, Size s) {
     final color = _tool == InkTool.highlighter ? _hlColor : _penColor;
+    final k = _sizes[_size[_tool]!];
+    // Pluma y marcatextos: fracción del ancho de la página. Láser: tamaño relativo.
     final width = switch (_tool) {
-      InkTool.pen => 0.0045,
-      InkTool.highlighter => 0.026,
-      InkTool.laser => 0.0,
+      InkTool.pen => 0.0045 * k,
+      InkTool.highlighter => 0.026 * k,
+      InkTool.laser => k,
     };
     ink.begin(_page, _norm(p, s), tool: _tool, color: color, width: width);
   }
@@ -261,17 +294,66 @@ class _DrawPageState extends State<DrawPage> {
       );
     }
 
+    // Grosor: cuatro puntos de tamaño creciente con el color de la herramienta
+    final sizeColor = _tool == InkTool.laser ? const Color(0xFFFF2D2D) : current;
+    Widget sizeDot(int i) {
+      final on = _size[_tool] == i;
+      final d = 7.0 + i * 5.5;
+      return Tooltip(
+        message: [t('Fino', 'Thin'), t('Normal', 'Normal'), t('Grueso', 'Thick'), t('Muy grueso', 'Extra thick')][i],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _setSize(i),
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? Pal.cardHi : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: on ? Pal.accent : Colors.transparent, width: 2),
+            ),
+            child: Container(
+              width: d,
+              height: d,
+              decoration: BoxDecoration(
+                color: _tool == InkTool.highlighter ? sizeColor.withValues(alpha: 0.6) : sizeColor,
+                shape: _tool == InkTool.highlighter ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: _tool == InkTool.highlighter ? BorderRadius.circular(2) : null,
+                border: Border.all(color: Pal.stroke),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final page = _page;
-    return Wrap(
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Wrap(
+        spacing: 6,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.center,
+        children: [
+          toolBtn(InkTool.pen, Icons.edit_rounded, t('Pluma', 'Pen')),
+          toolBtn(InkTool.highlighter, Icons.border_color_rounded, t('Marcatextos', 'Highlighter')),
+          toolBtn(InkTool.laser, Icons.adjust_rounded, t('Puntero láser', 'Laser pointer')),
+          const SizedBox(width: 6),
+          for (var i = 0; i < _sizes.length; i++) sizeDot(i),
+        ],
+      ),
+      const SizedBox(height: 8),
+      _colorsRow(colorDot, page),
+    ]);
+  }
+
+  Widget _colorsRow(Widget Function(Color) colorDot, int page) => Wrap(
       spacing: 6,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       alignment: WrapAlignment.center,
       children: [
-        toolBtn(InkTool.pen, Icons.edit_rounded, t('Pluma', 'Pen')),
-        toolBtn(InkTool.highlighter, Icons.border_color_rounded, t('Marcatextos', 'Highlighter')),
-        toolBtn(InkTool.laser, Icons.adjust_rounded, t('Puntero láser', 'Laser pointer')),
-        const SizedBox(width: 4),
         for (final col in _colors) colorDot(col),
         const SizedBox(width: 4),
         IconButton(
@@ -286,7 +368,6 @@ class _DrawPageState extends State<DrawPage> {
         ),
       ],
     );
-  }
 
   Widget _notes() {
     final s = c.currentSlide;
@@ -296,7 +377,7 @@ class _DrawPageState extends State<DrawPage> {
           t('Dibuja sobre la diapositiva: se ve al instante en el navegador de la PC.',
               'Draw on the slide: it shows up instantly in the computer’s browser.'),
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Pal.muted, height: 1.4),
+          style: TextStyle(color: Pal.muted, height: 1.4),
         ),
       );
     }
@@ -318,7 +399,7 @@ class _DrawPageState extends State<DrawPage> {
           color: forward ? Pal.accent : Pal.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
-            side: forward ? BorderSide.none : const BorderSide(color: Pal.stroke),
+            side: forward ? BorderSide.none : BorderSide(color: Pal.stroke),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -365,7 +446,7 @@ class _InkPainter extends CustomPainter {
     final l = ink.laser;
     if (l != null && ink.laserPage == page) {
       final o = Offset(l.dx * size.width, l.dy * size.height);
-      final r = size.width * 0.012 + 4;
+      final r = (size.width * 0.012 + 4) * ink.laserScale;
       canvas.drawCircle(o, r * 2.2, Paint()..color = const Color(0x55FF2D2D)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
       canvas.drawCircle(o, r, Paint()..color = const Color(0xFFFF2D2D));
       canvas.drawCircle(o, r * 0.45, Paint()..color = const Color(0xFFFFD0D0));
@@ -377,7 +458,7 @@ class _InkPainter extends CustomPainter {
     final hl = s.tool == InkTool.highlighter;
     final paint = Paint()
       ..color = hl ? s.color.withValues(alpha: 0.38) : s.color
-      ..strokeWidth = (s.width * size.width).clamp(1.5, 80)
+      ..strokeWidth = (s.width * size.width).clamp(1.5, 200)
       ..style = PaintingStyle.stroke
       ..strokeCap = hl ? StrokeCap.square : StrokeCap.round
       ..strokeJoin = StrokeJoin.round

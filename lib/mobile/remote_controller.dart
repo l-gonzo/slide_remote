@@ -280,7 +280,7 @@ class RemoteController extends ChangeNotifier {
           }
         } else {
           if (await NativeBridge.bleSend(cmd)) return _advance(forward);
-          _nudge(t('Abre Slide Remote en la PC para conectar', 'Open Slide Remote on the computer to connect'));
+          _nudge(t('Abre Zlide en la PC para conectar', 'Open Zlide on the computer to connect'));
         }
       case Mode.wifi:
         if (wifi.target == null) return _nudge(t('Elige tu PC', 'Choose your computer'));
@@ -290,7 +290,7 @@ class RemoteController extends ChangeNotifier {
         if (!sent) {
           _nudge(t('No se pudo enviar', 'Could not send'));
         } else if (!wifi.online) {
-          _nudge(t('La PC no responde. ¿Está abierta Slide Remote?', 'The computer is not responding. Is Slide Remote open?'));
+          _nudge(t('La PC no responde. ¿Está abierta Zlide?', 'The computer is not responding. Is Zlide open?'));
         }
       case Mode.browser:
         if (!browser.hasPdf) return _nudge(t('Primero elige tu presentación', 'Choose your presentation first'));
@@ -787,7 +787,7 @@ class RemoteController extends ChangeNotifier {
         return switch (btState) {
           BtState.connected => ConnView(Conn.on, t('Conectado', 'Connected'), isIOS ? t('App de escritorio', 'Desktop app') : btDeviceName),
           BtState.connecting => ConnView(Conn.busy, t('Conectando…', 'Connecting…'), btDeviceName),
-          BtState.waiting => ConnView(Conn.busy, t('Esperando PC', 'Waiting for computer'), t('Abre Slide Remote en la PC', 'Open Slide Remote on the computer')),
+          BtState.waiting => ConnView(Conn.busy, t('Esperando PC', 'Waiting for computer'), t('Abre Zlide en la PC', 'Open Zlide on the computer')),
           BtState.off => ConnView(Conn.error, t('Bluetooth apagado', 'Bluetooth off'), t('Actívalo en el teléfono', 'Turn it on on the phone')),
           BtState.noPermission => ConnView(Conn.error, t('Sin permiso', 'No permission'), t('Permite el acceso a Bluetooth', 'Allow Bluetooth access')),
           BtState.unavailable => ConnView(Conn.error, t('No disponible', 'Not available'), btMessage),

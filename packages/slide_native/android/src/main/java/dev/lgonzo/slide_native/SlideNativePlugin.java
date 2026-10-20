@@ -30,7 +30,7 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
 
 /**
- * Puente nativo de Slide Remote para Android:
+ * Puente nativo de Zlide para Android:
  *  - captura de los botones de volumen (envolviendo el Window.Callback de la Activity)
  *  - teclado Bluetooth HID (BtHidKeyboard)
  *  - permisos de Bluetooth y "hacer visible"
