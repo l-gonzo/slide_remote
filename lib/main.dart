@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,6 +15,16 @@ import 'mobile/remote_page.dart';
 ///  - en la PC (Windows/macOS/Linux): el receptor que presiona las teclas
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Licencias de las tipografías incluidas (SIL Open Font License 1.1)
+  LicenseRegistry.addLicense(() async* {
+    for (final (pkg, file) in [
+      ('Atkinson Hyperlegible Next', 'OFL-Atkinson.txt'),
+      ('Atkinson Hyperlegible Mono', 'OFL-AtkinsonMono.txt'),
+      ('Bricolage Grotesque', 'OFL-Bricolage.txt'),
+    ]) {
+      yield LicenseEntryWithLineBreaks([pkg], await rootBundle.loadString('assets/fonts/$file'));
+    }
+  });
   await I18n.load();
   await AppTheme.load();
   final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
@@ -21,7 +32,7 @@ Future<void> main() async {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     _systemBars();
   }
-  runApp(SlidyApp(desktop: desktop));
+  runApp(ZlideApp(desktop: desktop));
 }
 
 /// Barra de estado y de navegación del teléfono con los colores del tema.
@@ -36,15 +47,15 @@ void _systemBars() {
   ));
 }
 
-class SlidyApp extends StatefulWidget {
-  const SlidyApp({super.key, required this.desktop});
+class ZlideApp extends StatefulWidget {
+  const ZlideApp({super.key, required this.desktop});
   final bool desktop;
 
   @override
-  State<SlidyApp> createState() => _SlidyAppState();
+  State<ZlideApp> createState() => _ZlideAppState();
 }
 
-class _SlidyAppState extends State<SlidyApp> with WidgetsBindingObserver {
+class _ZlideAppState extends State<ZlideApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();

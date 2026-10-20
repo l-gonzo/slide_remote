@@ -61,53 +61,50 @@ class _TimerChipState extends State<TimerChip> {
   Widget build(BuildContext context) {
     final tm = widget.timer;
     final running = tm.running;
-    final fg = running ? Pal.accent : (tm.isZero ? Pal.muted : Pal.text);
-    final size = widget.big ? 20.0 : 16.0;
-    return Material(
-      color: running ? Pal.accent.withValues(alpha: 0.12) : Pal.card,
-      shape: StadiumBorder(side: BorderSide(color: running ? Pal.accent.withValues(alpha: 0.55) : Pal.stroke)),
-      clipBehavior: Clip.antiAlias,
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        InkWell(
+    // En marcha: naranja con su punto ("al aire"). Detenido: tinta tenue.
+    final fg = running ? Pal.accent : (tm.isZero ? Pal.muted : Pal.ink);
+    final size = widget.big ? 20.0 : 17.0;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Semantics(
+        button: true,
+        label: running ? t('Pausar cronómetro', 'Pause timer') : t('Iniciar cronómetro', 'Start timer'),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Rad.s),
           onTap: () {
             HapticFeedback.selectionClick();
             tm.toggle();
           },
-          child: Tooltip(
-            message: running ? t('Pausar cronómetro', 'Pause timer') : t('Iniciar cronómetro', 'Start timer'),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
             child: Padding(
-              padding: EdgeInsets.fromLTRB(10, widget.big ? 9 : 7, tm.isZero || running ? 14 : 6, widget.big ? 9 : 7),
+              padding: const EdgeInsets.symmetric(horizontal: Sp.s),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(running ? Icons.pause_rounded : Icons.timer_outlined, size: size + 2, color: fg),
-                const SizedBox(width: 6),
-                Text(
-                  TalkTimer.format(tm.elapsed),
-                  style: monoStyle.copyWith(
-                    color: fg,
-                    fontSize: size,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                AnimatedContainer(
+                  duration: Mo.of(context, Mo.fast),
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: running ? Pal.accent : Colors.transparent,
+                    border: Border.all(color: running ? Pal.accent : Pal.faint, width: 1.5),
                   ),
                 ),
+                const SizedBox(width: Sp.s),
+                Text(TalkTimer.format(tm.elapsed), style: Txt.digits(size, color: fg)),
               ]),
             ),
           ),
         ),
-        if (!running && !tm.isZero)
-          InkWell(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              tm.reset();
-            },
-            child: Tooltip(
-              message: t('Reiniciar cronómetro', 'Reset timer'),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 6, 10, 6),
-                child: Icon(Icons.restart_alt_rounded, size: size + 2, color: Pal.muted),
-              ),
-            ),
-          ),
-      ]),
-    );
+      ),
+      if (!running && !tm.isZero)
+        IconButton(
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            tm.reset();
+          },
+          tooltip: t('Reiniciar cronómetro', 'Reset timer'),
+          icon: Icon(Icons.restart_alt_rounded, size: size + 2, color: Pal.muted),
+        ),
+    ]);
   }
 }

@@ -1,78 +1,193 @@
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Colores de un tema. Naranja de software de presentación como acento, con tonos cálidos
-/// claros (tema claro) u oscuros (tema oscuro).
+// =====================================================================================
+// Sistema de diseño de Zlide — dirección "Atril"
+//
+// Zlide se usa de pie, frente a un público, mirando el teléfono de reojo. Por eso:
+//  - Las notas son lo principal: texto grande y muy legible (Atkinson Hyperlegible),
+//    directamente sobre el fondo, sin tarjetas alrededor.
+//  - El naranja es una "luz de cue": solo marca lo que importa ahora (siguiente, número de
+//    diapositiva, cronómetro en marcha, progreso). Todo lo demás es tinta y papel.
+//  - Las superficies se separan con espacio y líneas finas, no con bordes y sombras.
+//  - Los números (diapositiva, tiempo, direcciones) usan una tipografía de ancho fijo o una
+//    condensada grande, para leerse de un vistazo.
+// =====================================================================================
+
+/// Colores de un tema (claro u oscuro).
 class Palette {
   const Palette({
     required this.dark,
     required this.bg,
-    required this.card,
-    required this.cardHi,
-    required this.stroke,
-    required this.text,
-    required this.muted,
+    required this.raise,
+    required this.raiseHi,
+    required this.rule,
+    required this.faint,
+    required this.ink,
+    required this.mute,
     required this.accent,
     required this.onAccent,
     required this.ok,
     required this.busy,
     required this.error,
-    required this.off,
   });
+
   final bool dark;
-  final Color bg, card, cardHi, stroke, text, muted, accent, onAccent, ok, busy, error, off;
+
+  /// Fondo de la app ("papel" o "tinta").
+  final Color bg;
+
+  /// Superficie apenas elevada: botones secundarios, pistas de selectores, hojas.
+  final Color raise;
+  final Color raiseHi;
+
+  /// Líneas divisorias y pistas vacías.
+  final Color rule;
+
+  /// Elementos inactivos (bordes de radios, interruptores apagados, texto deshabilitado).
+  final Color faint;
+
+  /// Texto principal y texto secundario.
+  final Color ink, mute;
+
+  /// Naranja de presentación y el texto que va encima.
+  final Color accent, onAccent;
+
+  /// Estados.
+  final Color ok, busy, error;
 
   static const darkPalette = Palette(
     dark: true,
-    bg: Color(0xFF141110),
-    card: Color(0xFF1F1A18),
-    cardHi: Color(0xFF2B2421),
-    stroke: Color(0xFF3B322E),
-    text: Color(0xFFF7F1ED),
-    muted: Color(0xFFB4A69E),
-    accent: Color(0xFFF26522), // naranja
+    bg: Color(0xFF14100E),
+    raise: Color(0xFF211A17),
+    raiseHi: Color(0xFF2C2420),
+    rule: Color(0xFF2E2622),
+    faint: Color(0xFF4F443D),
+    ink: Color(0xFFF4ECE4),
+    mute: Color(0xFFA39488),
+    accent: Color(0xFFF26522),
     onAccent: Color(0xFFFFFFFF),
     ok: Color(0xFF3FD48A),
     busy: Color(0xFFFFC24B),
-    error: Color(0xFFFF5E6C),
-    off: Color(0xFF6F635C),
+    error: Color(0xFFFF6A6A),
   );
 
   static const lightPalette = Palette(
     dark: false,
-    bg: Color(0xFFFFF7F2),
-    card: Color(0xFFFFFFFF),
-    cardHi: Color(0xFFFCEBE1),
-    stroke: Color(0xFFF0D9CC),
-    text: Color(0xFF2B1A12),
-    muted: Color(0xFF7C665A),
-    accent: Color(0xFFD9480F), // naranja (más profundo para que se lea sobre blanco)
+    bg: Color(0xFFFBF6F0),
+    raise: Color(0xFFF2E9DF),
+    raiseHi: Color(0xFFEADFD3),
+    rule: Color(0xFFE7DBCE),
+    faint: Color(0xFFC9B8A9),
+    ink: Color(0xFF24170F),
+    mute: Color(0xFF75614F),
+    accent: Color(0xFFC9430C),
     onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF16955A),
-    busy: Color(0xFFB97800),
-    error: Color(0xFFD42A3C),
-    off: Color(0xFFB3A196),
+    ok: Color(0xFF14874F),
+    busy: Color(0xFFA66A00),
+    error: Color(0xFFC62A3A),
   );
 }
 
 /// Colores del tema en uso. Cambian al elegir claro/oscuro (la app se redibuja completa).
+///
+/// Los nombres antiguos (card, cardHi, stroke, text, muted, off) se conservan para las
+/// pantallas que todavía no se rediseñan.
 abstract final class Pal {
   static Palette p = Palette.darkPalette;
   static Color get bg => p.bg;
-  static Color get card => p.card;
-  static Color get cardHi => p.cardHi;
-  static Color get stroke => p.stroke;
-  static Color get text => p.text;
-  static Color get muted => p.muted;
+  static Color get raise => p.raise;
+  static Color get raiseHi => p.raiseHi;
+  static Color get rule => p.rule;
+  static Color get faint => p.faint;
+  static Color get ink => p.ink;
   static Color get accent => p.accent;
   static Color get onAccent => p.onAccent;
   static Color get ok => p.ok;
   static Color get busy => p.busy;
   static Color get error => p.error;
-  static Color get off => p.off;
+
+  static Color get card => p.raise;
+  static Color get cardHi => p.raiseHi;
+  static Color get stroke => p.rule;
+  static Color get text => p.ink;
+  static Color get muted => p.mute;
+  static Color get off => p.faint;
 }
+
+/// Espaciado (múltiplos de 4).
+abstract final class Sp {
+  static const xs = 4.0;
+  static const s = 8.0;
+  static const m = 12.0;
+  static const l = 16.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+
+  /// Margen lateral de las pantallas del teléfono.
+  static const page = 20.0;
+}
+
+/// Radios de las formas.
+abstract final class Rad {
+  static const s = 10.0; // chips, campos pequeños
+  static const m = 16.0; // botones, selectores, campos
+  static const l = 22.0; // hojas, superficies grandes
+  static const xl = 28.0; // botones de cambiar diapositiva
+}
+
+/// Movimiento: corto y funcional. Respeta "reducir animaciones" del sistema.
+abstract final class Mo {
+  static const fast = Duration(milliseconds: 140);
+  static const med = Duration(milliseconds: 240);
+  static const curve = Curves.easeOutCubic;
+
+  static Duration of(BuildContext context, Duration d) =>
+      MediaQuery.maybeDisableAnimationsOf(context) == true ? Duration.zero : d;
+}
+
+/// Tipografías (incluidas en la app, licencia OFL):
+///  - Bricolage Grotesque condensada: número de diapositiva, títulos y botones.
+///  - Atkinson Hyperlegible Next: texto y notas (diseñada para leerse con facilidad).
+///  - Atkinson Hyperlegible Mono: tiempo, direcciones IP y contadores.
+abstract final class Txt {
+  static const display = 'ZlideDisplay';
+  static const headline = 'ZlideHeadline';
+  static const body = 'Atkinson';
+  static const mono = 'AtkinsonMono';
+
+  static const _tabular = [FontFeature.tabularFigures()];
+
+  /// Número grande de la diapositiva.
+  static TextStyle number(double size) =>
+      TextStyle(fontFamily: display, fontSize: size, height: 0.9, letterSpacing: -size * 0.03, color: Pal.ink);
+
+  /// Títulos de pantalla y de diapositiva.
+  static TextStyle title(double size, {Color? color}) =>
+      TextStyle(fontFamily: headline, fontSize: size, height: 1.12, letterSpacing: -size * 0.01, color: color ?? Pal.ink);
+
+  /// Texto corrido.
+  static TextStyle text(double size, {FontWeight weight = FontWeight.w400, Color? color, double height = 1.45}) =>
+      TextStyle(fontFamily: body, fontSize: size, fontWeight: weight, height: height, color: color ?? Pal.ink);
+
+  /// Números y direcciones.
+  static TextStyle digits(double size, {FontWeight weight = FontWeight.w700, Color? color}) =>
+      TextStyle(fontFamily: mono, fontSize: size, fontWeight: weight, color: color ?? Pal.ink, fontFeatures: _tabular);
+
+  /// Rótulos de sección en mayúsculas.
+  static TextStyle get caption =>
+      TextStyle(fontFamily: body, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: Pal.muted);
+}
+
+/// Compatibilidad: estilo de ancho fijo para pantallas antiguas.
+const monoStyle = TextStyle(
+  fontFamily: Txt.mono,
+  fontFamilyFallback: ['monospace', 'Menlo', 'Consolas', 'Courier'],
+  fontFeatures: [FontFeature.tabularFigures()],
+);
 
 /// Tema elegido en Ajustes. [system] = claro u oscuro según el sistema.
 enum ThemePref { system, light, dark }
@@ -127,10 +242,10 @@ Color connColor(Conn c) => switch (c) {
       Conn.on => Pal.ok,
       Conn.busy => Pal.busy,
       Conn.error => Pal.error,
-      Conn.off => Pal.off,
+      Conn.off => Pal.faint,
     };
 
-/// Estado que se muestra en la pastilla de arriba.
+/// Estado de la conexión que se muestra arriba.
 class ConnView {
   const ConnView(this.conn, this.title, [this.subtitle]);
   final Conn conn;
@@ -139,166 +254,195 @@ class ConnView {
 }
 
 ThemeData buildTheme() {
-  final scheme = (Pal.p.dark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
-    primary: Pal.accent,
-    onPrimary: Pal.onAccent,
-    secondary: Pal.accent,
-    onSecondary: Pal.onAccent,
-    surface: Pal.card,
-    onSurface: Pal.text,
-    onSurfaceVariant: Pal.muted,
-    outline: Pal.stroke,
-    error: Pal.error,
+  final p = Pal.p;
+  final scheme = (p.dark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
+    primary: p.accent,
+    onPrimary: p.onAccent,
+    secondary: p.accent,
+    onSecondary: p.onAccent,
+    surface: p.bg,
+    onSurface: p.ink,
+    surfaceContainerLowest: p.bg,
+    surfaceContainerLow: p.raise,
+    surfaceContainer: p.raise,
+    surfaceContainerHigh: p.raiseHi,
+    surfaceContainerHighest: p.raiseHi,
+    onSurfaceVariant: p.mute,
+    outline: p.faint,
+    outlineVariant: p.rule,
+    error: p.error,
   );
-  final border = OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Pal.stroke),
+  final base = ThemeData(useMaterial3: true, brightness: p.dark ? Brightness.dark : Brightness.light);
+  final textTheme = base.textTheme
+      .apply(fontFamily: Txt.body, bodyColor: p.ink, displayColor: p.ink)
+      .copyWith(
+        displayLarge: Txt.number(76),
+        headlineMedium: Txt.title(28),
+        headlineSmall: Txt.title(24),
+        titleLarge: Txt.title(21),
+        titleMedium: Txt.text(16, weight: FontWeight.w600, height: 1.3),
+        titleSmall: Txt.text(14, weight: FontWeight.w600, height: 1.3),
+        bodyLarge: Txt.text(17),
+        bodyMedium: Txt.text(15),
+        bodySmall: Txt.text(13, color: p.mute),
+        labelLarge: Txt.title(17),
+        labelMedium: Txt.text(13, weight: FontWeight.w600),
+      );
+  final field = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(Rad.m),
+    borderSide: BorderSide.none,
   );
+  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m));
   return ThemeData(
     useMaterial3: true,
-    brightness: Pal.p.dark ? Brightness.dark : Brightness.light,
+    brightness: p.dark ? Brightness.dark : Brightness.light,
     colorScheme: scheme,
-    scaffoldBackgroundColor: Pal.bg,
-    canvasColor: Pal.cardHi,
-    splashFactory: InkRipple.splashFactory,
-    // Sin color fijo en las llamadas: así la hoja de Ajustes cambia al momento de tema
-    bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: Pal.card,
-      modalBackgroundColor: Pal.card,
-      dragHandleColor: Pal.off,
+    fontFamily: Txt.body,
+    textTheme: textTheme,
+    scaffoldBackgroundColor: p.bg,
+    canvasColor: p.bg,
+    splashFactory: InkSparkle.splashFactory,
+    visualDensity: VisualDensity.standard,
+    appBarTheme: AppBarTheme(
+      backgroundColor: p.bg,
+      foregroundColor: p.ink,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      systemOverlayStyle: p.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
     ),
-    popupMenuTheme: PopupMenuThemeData(color: Pal.cardHi),
-    iconTheme: IconThemeData(color: Pal.text),
-    snackBarTheme: SnackBarThemeData(
-      backgroundColor: Pal.cardHi,
-      contentTextStyle: TextStyle(color: Pal.text, fontSize: 15),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Pal.stroke),
+    dividerTheme: DividerThemeData(color: p.rule, thickness: 1, space: 1),
+    iconTheme: IconThemeData(color: p.ink),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accent, linearTrackColor: p.rule),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: p.accent,
+        foregroundColor: p.onAccent,
+        minimumSize: const Size(64, 52),
+        shape: buttonShape,
+        textStyle: Txt.title(17),
       ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: p.accent,
+        minimumSize: const Size(48, 48),
+        textStyle: Txt.text(15, weight: FontWeight.w600),
+        shape: buttonShape,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(foregroundColor: p.mute, minimumSize: const Size(48, 48)),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.onAccent : p.mute),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.accent : p.raiseHi),
+      trackOutlineColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.accent : p.faint),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.accent : p.faint),
+    ),
+    listTileTheme: ListTileThemeData(
+      contentPadding: EdgeInsets.zero,
+      minVerticalPadding: Sp.m,
+      titleTextStyle: Txt.text(16, weight: FontWeight.w600, height: 1.3),
+      subtitleTextStyle: Txt.text(13, color: p.mute, height: 1.35),
+      iconColor: p.mute,
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: p.bg,
+      modalBackgroundColor: p.bg,
+      dragHandleColor: p.faint,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Rad.l))),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: p.bg,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.l)),
+      titleTextStyle: Txt.title(22),
+      contentTextStyle: Txt.text(15, color: p.mute),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: p.raise,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m)),
+      textStyle: Txt.text(15),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(Rad.s)),
+      textStyle: Txt.text(13, color: p.bg, height: 1.3),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: p.ink,
+      contentTextStyle: Txt.text(15, color: p.bg, height: 1.35),
+      actionTextColor: p.accent,
+      behavior: SnackBarBehavior.floating,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Pal.cardHi,
-      hintStyle: TextStyle(color: Pal.off),
-      labelStyle: TextStyle(color: Pal.muted),
-      border: border,
-      enabledBorder: border,
-      focusedBorder: border.copyWith(borderSide: BorderSide(color: Pal.accent)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      fillColor: p.raise,
+      hintStyle: Txt.text(16, color: p.faint),
+      labelStyle: Txt.text(15, color: p.mute),
+      floatingLabelStyle: Txt.text(15, color: p.accent),
+      border: field,
+      enabledBorder: field,
+      focusedBorder: field.copyWith(borderSide: BorderSide(color: p.accent, width: 2)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: Sp.l, vertical: Sp.l),
     ),
+    dropdownMenuTheme: DropdownMenuThemeData(textStyle: Txt.text(16)),
   );
 }
 
 // ============================================================ componentes
 
+/// Superficie apenas elevada, sin borde. Para agrupar cuando el espacio no basta.
 class SrCard extends StatelessWidget {
-  const SrCard({super.key, required this.child, this.padding = const EdgeInsets.all(16)});
+  const SrCard({super.key, required this.child, this.padding = const EdgeInsets.all(Sp.l)});
   final Widget child;
   final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: padding,
-        decoration: BoxDecoration(
-          color: Pal.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Pal.stroke),
-        ),
+        decoration: BoxDecoration(color: Pal.raise, borderRadius: BorderRadius.circular(Rad.l)),
         child: child,
       );
 }
 
+/// Rótulo de sección.
 class Caption extends StatelessWidget {
   const Caption(this.text, {super.key});
   final String text;
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            color: Pal.muted,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.3,
-          ),
-        ),
+        padding: const EdgeInsets.only(bottom: Sp.s),
+        child: Text(text.toUpperCase(), style: Txt.caption),
       );
 }
 
+/// Punto de estado con un halo suave.
 class Dot extends StatelessWidget {
-  const Dot(this.color, {super.key, this.size = 9});
+  const Dot(this.color, {super.key, this.size = 8});
   final Color color;
   final double size;
 
   @override
   Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: Mo.of(context, Mo.med),
         width: size,
         height: size,
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 8)],
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.22), spreadRadius: size * 0.5)],
         ),
       );
 }
 
-class StatusChip extends StatelessWidget {
-  const StatusChip(this.view, {super.key, this.maxWidth = 210});
-  final ConnView view;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final sub = view.subtitle;
-    return Container(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Pal.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Pal.stroke),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Dot(connColor(view.conn)),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                view.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: view.conn == Conn.on ? Pal.ok : Pal.text,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ]),
-          if (sub != null && sub.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 17, top: 4),
-              child: Text(
-                sub,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Pal.muted, fontSize: 12),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
+/// Botón de acción. [primary]: naranja; si no, superficie elevada.
 class PillButton extends StatelessWidget {
   const PillButton(this.label, {super.key, required this.onTap, this.primary = false, this.icon, this.dense = false});
   final String label;
@@ -309,33 +453,37 @@ class PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = primary ? Pal.onAccent : Pal.text;
-    return Material(
-      color: primary ? Pal.accent : Pal.cardHi,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: primary ? BorderSide.none : BorderSide(color: Pal.stroke),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: dense ? 10 : 13),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (icon != null) ...[Icon(icon, size: 18, color: fg), const SizedBox(width: 8)],
-              Flexible(
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: fg, fontSize: 15, fontWeight: FontWeight.w600),
-                ),
+    final enabled = onTap != null;
+    final fg = primary ? Pal.onAccent : Pal.ink;
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Material(
+        color: primary ? Pal.accent : Pal.raise,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: dense ? 44 : 52),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Sp.l),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[Icon(icon, size: 19, color: fg), const SizedBox(width: Sp.s)],
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Txt.title(dense ? 15.5 : 17, color: fg),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -343,46 +491,60 @@ class PillButton extends StatelessWidget {
   }
 }
 
-/// Selector tipo pestañas.
+/// Selector de opciones en una pista. [accent]: la opción elegida va en naranja (ajustes);
+/// si no, en el color del fondo (cambio de modo, más discreto).
 class Segmented<T> extends StatelessWidget {
-  const Segmented({super.key, required this.values, required this.labels, required this.selected, required this.onChanged});
+  const Segmented({
+    super.key,
+    required this.values,
+    required this.labels,
+    required this.selected,
+    required this.onChanged,
+    this.accent = false,
+  });
   final List<T> values;
   final List<String> labels;
   final T selected;
   final ValueChanged<T> onChanged;
+  final bool accent;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Pal.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Pal.stroke),
-        ),
+        padding: const EdgeInsets.all(Sp.xs),
+        decoration: BoxDecoration(color: Pal.raise, borderRadius: BorderRadius.circular(Rad.m)),
         child: Row(children: [
           for (var i = 0; i < values.length; i++)
             Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(values[i]),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: values[i] == selected ? Pal.accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    labels[i],
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: values[i] == selected ? Pal.onAccent : Pal.muted,
-                      fontSize: 13,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
+              child: Semantics(
+                button: true,
+                selected: values[i] == selected,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (values[i] != selected) HapticFeedback.selectionClick();
+                    onChanged(values[i]);
+                  },
+                  child: AnimatedContainer(
+                    duration: Mo.of(context, Mo.fast),
+                    curve: Mo.curve,
+                    constraints: const BoxConstraints(minHeight: 42),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: Sp.s, horizontal: Sp.xs),
+                    decoration: BoxDecoration(
+                      color: values[i] == selected ? (accent ? Pal.accent : Pal.bg) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(Rad.m - Sp.xs),
+                    ),
+                    child: Text(
+                      labels[i],
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Txt.text(
+                        14,
+                        weight: FontWeight.w600,
+                        height: 1.2,
+                        color: values[i] == selected ? (accent ? Pal.onAccent : Pal.ink) : Pal.muted,
+                      ),
                     ),
                   ),
                 ),
@@ -391,5 +553,3 @@ class Segmented<T> extends StatelessWidget {
         ]),
       );
 }
-
-const monoStyle = TextStyle(fontFamily: 'monospace', fontFamilyFallback: ['Menlo', 'Consolas', 'Courier']);

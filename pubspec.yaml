@@ -36,6 +36,34 @@ flutter:
   assets:
     - assets/web/
     - assets/icon/logo.png
+    - assets/fonts/OFL-Atkinson.txt
+    - assets/fonts/OFL-AtkinsonMono.txt
+    - assets/fonts/OFL-Bricolage.txt
+
+  # Tipografías (OFL; licencias en assets/fonts). Instancias estáticas de las fuentes variables.
+  fonts:
+    - family: Atkinson
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/AtkinsonHyperlegibleNext-Bold.ttf
+          weight: 700
+    - family: AtkinsonMono
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/AtkinsonHyperlegibleMono-Bold.ttf
+          weight: 700
+    - family: ZlideDisplay
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque-Display.ttf
+          weight: 800
+    - family: ZlideHeadline
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque-Headline.ttf
+          weight: 700
 
 flutter_launcher_icons:
   image_path: assets/icon/icon.png

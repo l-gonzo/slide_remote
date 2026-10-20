@@ -515,3 +515,12 @@ tool/package_macos.sh             crea .dmg
 
 - **pdf.js** (modo “Transmitir desde móvil”): Apache 2.0.
 - **LibreOffice** (convertidor de Android): MPL 2.0; el script copia su licencia dentro de la app.
+- **Tipografías** (incluidas en la app, `assets/fonts/`): Atkinson Hyperlegible Next y Mono (Braille Institute) y Bricolage Grotesque (Mathieu Triay), las tres con SIL Open Font License 1.1. Se guardan como instancias estáticas de las fuentes variables; las licencias aparecen en la pantalla de licencias de la app.
+
+## Diseño
+
+La interfaz del teléfono sigue la dirección **“Atril”**: las notas son lo principal y se leen como en un atril, directamente sobre el fondo y con letra grande (Atkinson Hyperlegible, hecha para leerse con facilidad). El naranja se usa como “luz de cue” solo para lo que importa en ese momento: el botón Siguiente, el número de diapositiva, el progreso y el cronómetro en marcha.
+
+- **Tres estados** en la pantalla principal: *Preparar* (sin conexión: eliges modo y conectas), *Listo* (conectado y sin notas: botones grandes) y *Presentar* (con notas). Si la conexión se cae con notas en pantalla, las notas se quedan y aparece un aviso para reconectar.
+- **La conexión está siempre a un toque:** la línea de estado de arriba abre la hoja *Conexión* (modo, PC, dirección).
+- Todo el estilo está en `lib/common/theme.dart`: colores claro/oscuro (`Palette`), espaciado (`Sp`), radios (`Rad`), movimiento (`Mo`, respeta “reducir animaciones”) y tipografía (`Txt`).
