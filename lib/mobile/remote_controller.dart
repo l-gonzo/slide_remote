@@ -16,6 +16,7 @@ import '../common/theme.dart';
 import 'browser_server.dart';
 import 'ink.dart';
 import 'native_bridge.dart';
+import 'slide_thumbs.dart';
 import 'talk_timer.dart';
 import 'wifi_client.dart';
 
@@ -38,6 +39,9 @@ class RemoteController extends ChangeNotifier {
 
   /// Cronómetro de la presentación (solo en el teléfono).
   final timer = TalkTimer();
+
+  /// Miniatura de la siguiente diapositiva al transmitir.
+  final thumbs = SlideThumbs();
 
   /// Dibujos del modo WiFi (se mandan a la app de escritorio mientras la vista de dibujo está abierta).
   late final InkBoard wifiInk = InkBoard((m) => wifiInkSink?.call(m));
@@ -140,11 +144,16 @@ class RemoteController extends ChangeNotifier {
   bool get pcPresenting =>
       mode == Mode.wifi && _shownPage > 0 && DateTime.now().difference(_shownPageAt) < const Duration(seconds: 6);
 
-  void _onPcPage(int page, int total) {
+  /// Página y total que proyecta la PC (0 si no proyecta).
+  int get shownPage => pcPresenting ? _shownPage : 0;
+  int get shownTotal => pcPresenting ? _shownTotal : 0;
+
+  void _onPcPage(int page, int total, int version) {
     final was = pcPresenting;
     _shownPage = page;
     _shownTotal = total;
     _shownPageAt = DateTime.now();
+    if (page > 0 && version != 0 && version != _pcPdfVer) _fetchPcPdf(version);
     if (page > 0 && deck != null) {
       final i = _slideForPage(page, total);
       if (i != null && (i != slide || step != 0)) {
@@ -203,6 +212,8 @@ class RemoteController extends ChangeNotifier {
     wifi.dispose();
     browser.dispose();
     _nudges.close();
+    timer.dispose();
+    thumbs.dispose();
     super.dispose();
   }
 
@@ -300,6 +311,130 @@ class RemoteController extends ChangeNotifier {
 
   void _nudge(String msg) {
     if (!_nudges.isClosed) _nudges.add(msg);
+  }
+
+  // ================================================================ ir a una diapositiva
+
+  /// Total de páginas cuando se transmite (la página la sabe quien proyecta), o 0.
+  int get exactTotal => switch (mode) {
+        Mode.browser when browser.hasPdf => browser.total,
+        Mode.wifi when pcPresenting => _shownTotal,
+        _ => 0,
+      };
+
+  /// Página del PDF que corresponde a la diapositiva [i] de [deck] (al revés que [_slideForPage]).
+  int _pageForSlide(int i, int pdfPages) {
+    final d = deck!;
+    if (pdfPages == _deckTotal && _deckTotal != d.length) return d[i].number;
+    return i + 1;
+  }
+
+  /// Ir a la diapositiva [i] de [deck] (la lista que sale al tocar el número).
+  Future<void> goToSlide(int i) async {
+    final d = deck;
+    if (d == null || i < 0 || i >= d.length) return;
+    if (slideIsExact) return goToPage(_pageForSlide(i, exactTotal));
+    // Sin transmitir: la PC escribe el número (contando las ocultas) y Enter
+    if (await _typeSlideNumber(d[i].number)) {
+      slide = i;
+      step = 0;
+      notifyListeners();
+    }
+  }
+
+  /// Transmitiendo: ir a la página [page] del PDF. La posición se sincroniza sola al cambiar.
+  Future<void> goToPage(int page) async {
+    HapticFeedback.selectionClick();
+    switch (mode) {
+      case Mode.browser:
+        browser.goTo(page);
+      case Mode.wifi:
+        if (!wifi.sendGoTo(page)) _nudge(t('No se pudo enviar', 'Could not send'));
+      case Mode.bluetooth:
+        await _typeSlideNumber(page);
+    }
+  }
+
+  /// Control Bluetooth y WiFi sin proyectar: el número y Enter. true si se envió.
+  Future<bool> _typeSlideNumber(int n) async {
+    HapticFeedback.selectionClick();
+    switch (mode) {
+      case Mode.bluetooth:
+        if (isAndroid) {
+          for (final usage in hidUsagesForNumber(n)) {
+            if (!await NativeBridge.hidSend(usage)) {
+              _nudge(t('Conecta tu PC primero', 'Connect your computer first'));
+              return false;
+            }
+          }
+          return true;
+        }
+        if (await NativeBridge.bleSend(Cmd.goTo, arg: n)) return true;
+        _nudge(t('Abre Zlide en la PC para conectar', 'Open Zlide on the computer to connect'));
+        return false;
+      case Mode.wifi:
+        if (wifi.target == null) {
+          _nudge(t('Elige tu PC', 'Choose your computer'));
+          return false;
+        }
+        if (wifi.sendGoTo(n)) return true;
+        _nudge(t('No se pudo enviar', 'Could not send'));
+        return false;
+      case Mode.browser:
+        return false; // con PDF siempre es exacto
+    }
+  }
+
+  // ================================================================ miniatura de la siguiente
+
+  /// PDF del que salen las miniaturas: el del teléfono, o el que proyecta la PC.
+  String? get thumbPdf => switch (mode) {
+        Mode.browser => browser.pdfFile?.path,
+        Mode.wifi when pcPresenting => _pcPdfPath,
+        _ => null,
+      };
+
+  /// Página de la siguiente diapositiva, solo al transmitir.
+  int? get nextPage {
+    if (!slideIsExact || nextSlide == null) return null;
+    return _pageForSlide(slide + 1, exactTotal);
+  }
+
+  // PDF que proyecta la PC, descargado para las miniaturas (también lo usa la vista de dibujo)
+  int _pcPdfVer = 0;
+  String? _pcPdfPath;
+  bool _pcPdfLoading = false;
+  DateTime _pcPdfFailedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// (versión, ruta) del PDF de la PC ya descargado.
+  (int, String)? get pcPdf => _pcPdfPath == null ? null : (_pcPdfVer, _pcPdfPath!);
+
+  Future<void> _fetchPcPdf(int version) async {
+    final host = wifi.targetAddress;
+    final port = _pcPort;
+    if (_pcPdfLoading || host == null || port == null) return;
+    if (DateTime.now().difference(_pcPdfFailedAt) < const Duration(seconds: 30)) return;
+    _pcPdfLoading = true;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    final file = File('${Directory.systemTemp.path}/slideremote_thumb_$version.pdf');
+    try {
+      final res = await (await client.getUrl(Uri(scheme: 'http', host: host.address, port: port, path: '/deck.pdf')))
+          .close()
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
+      await res.pipe(file.openWrite()).timeout(const Duration(seconds: 60));
+      final old = _pcPdfPath;
+      _pcPdfVer = version;
+      _pcPdfPath = file.path;
+      if (old != null && old != file.path) File(old).delete().ignore();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('PDF de la PC: $e');
+      _pcPdfFailedAt = DateTime.now();
+    } finally {
+      client.close(force: true);
+      _pcPdfLoading = false;
+    }
   }
 
   // ================================================================ ajustes

@@ -17,8 +17,9 @@ enum BleStatus { unknown, off, unauthorized, unsupported, searching, connecting,
 /// Un comando recibido, para mostrarlo en pantalla.
 @immutable
 class Received {
-  const Received(this.cmd, this.source, this.at);
+  const Received(this.cmd, this.source, this.at, [this.slide = 0]);
   final int cmd;
+  final int slide; // con Cmd.goTo
   final String source; // "WiFi" o "Bluetooth"
   final DateTime at;
 }
@@ -141,6 +142,19 @@ class ReceiverController extends ChangeNotifier {
     _notify();
   }
 
+  /// "Ir a la diapositiva [n]": proyectando, [n] es la página; si no, se escribe n y Enter.
+  void _goTo(int n, String source) {
+    if (n < 1) return;
+    if (present.active) {
+      present.goTo(n);
+    } else {
+      injector.typeNumber(n);
+    }
+    last = Received(Cmd.goTo, source, DateTime.now(), n);
+    count++;
+    _notify();
+  }
+
   // ================================================================ WiFi
 
   Future<void> _startWifi() async {
@@ -186,19 +200,21 @@ class ReceiverController extends ChangeNotifier {
       case 'PING':
         s.send(ascii.encode(Udp.pong(hostName)), d.address, d.port);
         if (notes.port > 0) s.send(ascii.encode(Udp.notes(notes.version, notes.port)), d.address, d.port);
-        s.send(ascii.encode(present.active ? Udp.page(present.page, present.total) : Udp.page(0, 0)), d.address, d.port);
+        s.send(ascii.encode(present.active ? Udp.page(present.page, present.total, present.version) : Udp.page(0, 0)), d.address, d.port);
         _phoneAddr = d.address;
         _phonePort = d.port;
         _notify();
       case 'C':
         if (parts.length >= 3) _press(int.tryParse(parts[2]) ?? 0, 'WiFi');
+      case 'G':
+        if (parts.length >= 3) _goTo(int.tryParse(parts[2]) ?? 0, 'WiFi');
     }
   }
 
   void _sendPageToPhone() {
     final a = _phoneAddr;
     if (a == null || _udp == null) return;
-    _udp!.send(ascii.encode(Udp.page(present.page, present.total)), a, _phonePort);
+    _udp!.send(ascii.encode(Udp.page(present.page, present.total, present.version)), a, _phonePort);
   }
 
   void _langChanged() => present.setLanguage(I18n.current.value);
@@ -327,6 +343,10 @@ class ReceiverController extends ChangeNotifier {
     if (seq == _lastSeq && now.difference(_lastSeqAt) < const Duration(seconds: 2)) return;
     _lastSeq = seq;
     _lastSeqAt = now;
+    if (cmd == Cmd.goTo) {
+      if (v.length >= 4) _goTo((v[2] << 8) | v[3], 'Bluetooth');
+      return;
+    }
     _press(cmd, 'Bluetooth');
   }
 

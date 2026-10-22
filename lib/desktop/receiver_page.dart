@@ -37,50 +37,89 @@ class _ReceiverPageState extends State<ReceiverPage> {
     return Scaffold(
       body: ListenableBuilder(
         listenable: Listenable.merge([c, I18n.current]),
-        builder: (context, _) => Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _header(),
-                const SizedBox(height: 22),
-                _activity(),
-                const SizedBox(height: 14),
-                _notesCard(),
-                const SizedBox(height: 14),
-
-                if (c.injector.problem != null) ...[_permissionCard(), const SizedBox(height: 14)],
-                _wifiCard(),
-                const SizedBox(height: 14),
-                _bleCard(),
-                const SizedBox(height: 18),
-                Text(
-                  t('Deja esta ventana abierta (puede estar minimizada) y pon tu presentación al frente. '
-                      'Con Android por Bluetooth no necesitas esta app: el teléfono funciona como teclado.',
-                      'Keep this window open (it can be minimized) and bring your presentation to the front. '
-                      'With Android over Bluetooth you don’t need this app: the phone works as a keyboard.'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Pal.muted, fontSize: 12.5, height: 1.5),
-                ),
-              ]),
+        builder: (context, _) => LayoutBuilder(builder: (context, box) {
+          // Ventana ancha: dos columnas (lo que usas al presentar | el estado de las conexiones).
+          // Angosta: una sola columna, en el mismo orden.
+          final wide = box.maxWidth >= _twoColumns;
+          final pad = box.maxWidth < 480 ? 16.0 : 28.0;
+          final main = [_activity(), const SizedBox(height: 14), _notesCard()];
+          final links = [
+            if (c.injector.problem != null) ...[_permissionCard(), const SizedBox(height: 14)],
+            _wifiCard(),
+            const SizedBox(height: 14),
+            _bleCard(),
+          ];
+          return Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(pad),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: wide ? 1080 : 560),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _header(compact: box.maxWidth < 520),
+                  const SizedBox(height: 22),
+                  if (wide)
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: main)),
+                      const SizedBox(width: 18),
+                      Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: links)),
+                    ])
+                  else ...[
+                    ...main,
+                    const SizedBox(height: 14),
+                    ...links,
+                  ],
+                  const SizedBox(height: 18),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: Text(
+                        t('Deja esta ventana abierta (puede estar minimizada) y pon tu presentación al frente. '
+                            'Con Android por Bluetooth no necesitas esta app: el teléfono funciona como teclado.',
+                            'Keep this window open (it can be minimized) and bring your presentation to the front. '
+                            'With Android over Bluetooth you don’t need this app: the phone works as a keyboard.'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Pal.muted, fontSize: 12.5, height: 1.5),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
             ),
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
 
-  Widget _header() => Row(children: [
-        Image.asset('assets/icon/logo.png', width: 60, height: 60, filterQuality: FilterQuality.medium),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Zlide', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            Text(t('Receptor para la PC', 'Receiver for the computer'), style: TextStyle(color: Pal.muted)),
-          ]),
-        ),
-        Container(
+  /// Ancho desde el que la ventana muestra dos columnas.
+  static const _twoColumns = 980.0;
+
+  /// [compact]: ventana angosta; el nombre de la PC baja a su propia línea.
+  Widget _header({bool compact = false}) {
+    final title = Row(children: [
+      Image.asset('assets/icon/logo.png',
+          width: compact ? 48 : 60, height: compact ? 48 : 60, filterQuality: FilterQuality.medium),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Zlide', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+          Text(t('Receptor para la PC', 'Receiver for the computer'),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Pal.muted)),
+        ]),
+      ),
+      if (!compact) ...[Flexible(child: _hostChip()), const SizedBox(width: 6)],
+      _themeMenu(),
+      _languageMenu(),
+    ]);
+    if (!compact) return title;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      title,
+      const SizedBox(height: 10),
+      _hostChip(),
+    ]);
+  }
+
+  Widget _hostChip() => Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: Pal.card,
@@ -90,13 +129,12 @@ class _ReceiverPageState extends State<ReceiverPage> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.computer, size: 16, color: Pal.muted),
             const SizedBox(width: 8),
-            Text(c.hostName, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text(c.hostName,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
           ]),
-        ),
-        const SizedBox(width: 6),
-        _themeMenu(),
-        _languageMenu(),
-      ]);
+        );
 
   /// Tema: Sistema / Claro / Oscuro.
   Widget _themeMenu() => PopupMenuButton<ThemePref>(
@@ -150,7 +188,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
           child: Icon(
             l == null
                 ? Icons.touch_app_outlined
-                : Cmd.isForward(l.cmd)
+                : l.cmd == Cmd.goTo
+                    ? Icons.low_priority_rounded
+                    : Cmd.isForward(l.cmd)
                     ? Icons.arrow_forward_rounded
                     : Icons.arrow_back_rounded,
             size: 34,
@@ -163,7 +203,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
             Text(
               l == null
                   ? (connected ? t('Teléfono conectado', 'Phone connected') : t('Esperando al teléfono', 'Waiting for the phone'))
-                  : '${Cmd.isForward(l.cmd) ? t('Siguiente', 'Next') : t('Anterior', 'Previous')}  ·  ${Cmd.label(l.cmd)}',
+                  : l.cmd == Cmd.goTo
+                      ? t('Ir a la diapositiva ${l.slide}', 'Go to slide ${l.slide}')
+                      : '${Cmd.isForward(l.cmd) ? t('Siguiente', 'Next') : t('Anterior', 'Previous')}  ·  ${Cmd.label(l.cmd)}',
               style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),

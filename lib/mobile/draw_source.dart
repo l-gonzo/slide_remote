@@ -320,10 +320,18 @@ class WifiDrawSource extends DrawSource {
   }
 
   Future<void> _download(int ver) async {
-    _downloading = true;
     _pdfPath = null;
     _images.clear();
     _failed.clear();
+    // Ya se descargó para la miniatura de la siguiente diapositiva
+    final cached = c.pcPdf;
+    if (cached != null && cached.$1 == ver && File(cached.$2).existsSync()) {
+      _pdfPath = cached.$2;
+      _send(ink.snapshot());
+      notifyListeners();
+      return;
+    }
+    _downloading = true;
     notifyListeners();
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {

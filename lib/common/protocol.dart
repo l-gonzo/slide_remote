@@ -36,6 +36,10 @@ abstract final class Cmd {
 
   static bool isValid(int cmd) => cmd >= next && cmd <= left;
 
+  /// Ir a una diapositiva (por BLE viaja con el número en 2 bytes más). No es una tecla:
+  /// la PC escribe el número y Enter, o cambia la página si está proyectando.
+  static const int goTo = 5;
+
   static String label(int cmd) => switch (cmd) {
         Cmd.next => t('AvPág', 'Page Down'),
         Cmd.prev => t('RePág', 'Page Up'),
@@ -54,10 +58,20 @@ int hidUsageFor(int cmd) => switch (cmd) {
       _ => 0,
     };
 
+/// Teclas HID para "ir a la diapositiva N": los dígitos y Enter (PowerPoint, Impress y Keynote
+/// lo entienden así durante la presentación).
+List<int> hidUsagesForNumber(int n) => [
+      for (final ch in '$n'.codeUnits) ch == 0x30 ? 0x27 : 0x1E + (ch - 0x31), // 1–9 → 0x1E–0x26, 0 → 0x27
+      0x28, // Enter
+    ];
+
 /// Mensajes UDP (texto ASCII).
 abstract final class Udp {
   static const String prefix = 'SR1';
   static String command(int cmd) => '$prefix C $cmd';
+
+  /// Ir a la diapositiva [n]: si la PC proyecta es la página del PDF; si no, escribe n y Enter.
+  static String goTo(int n) => '$prefix G $n';
   static const String ping = '$prefix PING';
   static String pong(String name) => '$prefix PONG $name';
 
@@ -65,6 +79,7 @@ abstract final class Udp {
   /// en GET /notes. Se manda junto con cada PONG; el teléfono solo descarga si cambió.
   static String notes(int version, int port) => '$prefix NOTES $version $port';
 
-  /// "Proyectar en esta PC": página actual y total (0 0 = no está proyectando).
-  static String page(int page, int total) => '$prefix PAGE $page $total';
+  /// "Proyectar en esta PC": página actual, total (0 0 = no está proyectando) y versión del PDF
+  /// (cambia con cada presentación; el teléfono lo descarga para las miniaturas).
+  static String page(int page, int total, [int version = 0]) => '$prefix PAGE $page $total $version';
 }

@@ -122,7 +122,24 @@ abstract final class NativeBridge {
 
   static Future<void> bleStart() => call('bleStart');
   static Future<void> bleStop() => call('bleStop');
-  static Future<bool> bleSend(int cmd) async => await call<bool>('bleSend', {'cmd': cmd}) ?? false;
+  static Future<bool> bleSend(int cmd, {int? arg}) async =>
+      await call<bool>('bleSend', {'cmd': cmd, 'arg': arg}) ?? false;
+
+  // ---------------------------------------------------------------- vibración
+
+  /// [count] pulsos cortos (avisos del tiempo objetivo). Sin la parte nativa, vibración háptica.
+  static Future<void> vibrate(int count) async {
+    try {
+      await _methods.invokeMethod<void>('vibrate', {'count': count});
+    } on MissingPluginException {
+      for (var i = 0; i < count; i++) {
+        if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 260));
+        await HapticFeedback.heavyImpact();
+      }
+    } on PlatformException catch (e) {
+      debugPrint('slide_native.vibrate: ${e.code} ${e.message}');
+    }
+  }
 }
 
 @immutable

@@ -87,7 +87,11 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             result(nil)
         case "bleSend":
             let cmd = (args?["cmd"] as? Int) ?? 0
-            result(bleSend(UInt8(clamping: cmd)))
+            let arg = args?["arg"] as? Int
+            result(bleSend(UInt8(clamping: cmd), arg: arg))
+        case "vibrate":
+            vibrate(count: (args?["count"] as? Int) ?? 1)
+            result(nil)
         case "hidSupported":
             result(false)
         case "renderPdfPage":
@@ -261,14 +265,31 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         emitBle("stopped")
     }
 
-    private func bleSend(_ cmd: UInt8) -> Bool {
+    /// [arg] (opcional) viaja en 2 bytes más: el número de diapositiva de "ir a".
+    private func bleSend(_ cmd: UInt8, arg: Int? = nil) -> Bool {
         guard let pm = peripheral, let ch = commandChar, !subscribers.isEmpty else { return false }
         seq = seq &+ 1
-        let data = Data([seq, cmd])
+        var bytes = [seq, cmd]
+        if let a = arg {
+            let v = UInt16(clamping: a)
+            bytes += [UInt8(v >> 8), UInt8(v & 0xFF)]
+        }
+        let data = Data(bytes)
         if !pm.updateValue(data, for: ch, onSubscribedCentrals: nil) {
             pending.append(data) // cola llena: se reenvía en peripheralManagerIsReady
         }
         return true
+    }
+
+    /// Aviso discreto del cronómetro: [count] toques hápticos seguidos.
+    private func vibrate(count: Int) {
+        let gen = UIImpactFeedbackGenerator(style: .heavy)
+        gen.prepare()
+        for i in 0..<max(1, count) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26 * Double(i)) {
+                gen.impactOccurred()
+            }
+        }
     }
 
     private func startAdvertisingIfReady() {

@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'common/i18n.dart';
 import 'common/theme.dart';
 import 'desktop/receiver_page.dart';
+import 'mobile/orientation.dart';
 import 'mobile/remote_page.dart';
 
 /// Un solo proyecto, dos apps:
@@ -29,7 +30,7 @@ Future<void> main() async {
   await AppTheme.load();
   final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
   if (!desktop) {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    defaultOrientations();
     _systemBars();
   }
   runApp(ZlideApp(desktop: desktop));

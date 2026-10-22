@@ -27,6 +27,9 @@ abstract class KeyInjector {
   /// Presiona y suelta la tecla del comando ([Cmd]).
   void press(int cmd);
 
+  /// Escribe [n] y Enter: "ir a la diapositiva n" en PowerPoint, Impress y Keynote.
+  void typeNumber(int n);
+
   void dispose();
 }
 
@@ -69,9 +72,20 @@ class _WindowsInjector implements KeyInjector {
 
   @override
   void press(int cmd) {
-    if (!_loaded) return;
     final vk = _vk(cmd);
-    if (vk == 0) return;
+    if (vk != 0) _tap(vk, _extended);
+  }
+
+  @override
+  void typeNumber(int n) {
+    for (final ch in '$n'.codeUnits) {
+      _tap(ch, 0); // VK_0–VK_9 = '0'–'9'
+    }
+    _tap(0x0D, 0); // VK_RETURN
+  }
+
+  void _tap(int vk, int flags) {
+    if (!_loaded) return;
     final buf = calloc<Uint8>(_sizeOfInput * 2);
     try {
       final b = ByteData.sublistView(buf.asTypedList(_sizeOfInput * 2));
@@ -81,7 +95,7 @@ class _WindowsInjector implements KeyInjector {
         final o = i * _sizeOfInput;
         b.setUint32(o + 0, _inputKeyboard, Endian.little);
         b.setUint16(o + 8, vk, Endian.little);
-        b.setUint32(o + 12, _extended | (i == 1 ? _keyUp : 0), Endian.little);
+        b.setUint32(o + 12, flags | (i == 1 ? _keyUp : 0), Endian.little);
       }
       _sendInput(2, buf, _sizeOfInput);
     } finally {
@@ -143,11 +157,25 @@ class _MacInjector implements KeyInjector {
         _ => -1,
       };
 
+  // kVK_ANSI_0 … kVK_ANSI_9 (no son consecutivos)
+  static const _digits = [0x1D, 0x12, 0x13, 0x14, 0x15, 0x17, 0x16, 0x1A, 0x1C, 0x19];
+
   @override
   void press(int cmd) {
-    if (!_loaded) return;
     final code = _keyCode(cmd);
-    if (code < 0) return;
+    if (code >= 0) _tap(code);
+  }
+
+  @override
+  void typeNumber(int n) {
+    for (final ch in '$n'.codeUnits) {
+      _tap(_digits[ch - 0x30]);
+    }
+    _tap(0x24); // kVK_Return
+  }
+
+  void _tap(int code) {
+    if (!_loaded) return;
     for (final down in [true, false]) {
       final ev = _create(nullptr, code, down);
       if (ev == nullptr) return;
@@ -183,6 +211,9 @@ class _LinuxInjector implements KeyInjector {
     Cmd.right: 106, // KEY_RIGHT
     Cmd.left: 105, // KEY_LEFT
   };
+  // KEY_0 … KEY_9 (KEY_1 = 2 … KEY_9 = 10, KEY_0 = 11) y KEY_ENTER
+  static const _digits = [11, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  static const _enter = 28;
 
   final _libc = DynamicLibrary.process();
   late final int Function(Pointer<Utf8>, int) _open =
@@ -222,7 +253,7 @@ class _LinuxInjector implements KeyInjector {
         return;
       }
       _ioctl1(fd, _uiSetEvBit, _evKey);
-      for (final k in _keys.values) {
+      for (final k in [..._keys.values, ..._digits, _enter]) {
         _ioctl1(fd, _uiSetKeyBit, k);
       }
       // struct uinput_user_dev: name[80], input_id{bustype,vendor,product,version}, ff_effects_max,
@@ -261,7 +292,19 @@ class _LinuxInjector implements KeyInjector {
   @override
   void press(int cmd) {
     final code = _keys[cmd];
-    if (_fd < 0 || code == null) return;
+    if (code != null) _tap(code);
+  }
+
+  @override
+  void typeNumber(int n) {
+    for (final ch in '$n'.codeUnits) {
+      _tap(_digits[ch - 0x30]);
+    }
+    _tap(_enter);
+  }
+
+  void _tap(int code) {
+    if (_fd < 0) return;
     // 4 eventos input_event (24 bytes en 64 bits: timeval 16, type u16, code u16, value s32)
     const evSize = 24;
     final buf = calloc<Uint8>(evSize * 4);

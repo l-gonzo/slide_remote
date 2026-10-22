@@ -6,6 +6,7 @@ import '../common/i18n.dart';
 import '../common/theme.dart';
 import 'ink.dart';
 import 'draw_source.dart';
+import 'orientation.dart';
 import 'remote_controller.dart';
 import 'timer_chip.dart';
 
@@ -79,15 +80,17 @@ class _DrawPageState extends State<DrawPage> {
   @override
   void dispose() {
     src.close();
-    // La app del teléfono va siempre en vertical
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    defaultOrientations();
     super.dispose();
   }
 
   void _toggleRotation() {
     setState(() => _landscape = !_landscape);
-    SystemChrome.setPreferredOrientations(
-        _landscape ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp]);
+    if (_landscape) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    } else {
+      defaultOrientations();
+    }
   }
 
   // ---------------------------------------------------------------- interfaz
@@ -107,41 +110,62 @@ class _DrawPageState extends State<DrawPage> {
     );
   }
 
-  Widget _portraitLayout() => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _topBar(),
-          const SizedBox(height: 6),
-          _slide(),
-          const SizedBox(height: 10),
-          _toolbar(),
-          const SizedBox(height: 10),
-          Expanded(child: _notes()),
-          const SizedBox(height: 10),
-          SizedBox(height: 64, child: _navButtons(horizontal: true)),
-        ]),
+  Widget _portraitLayout() => LayoutBuilder(
+        builder: (context, box) => Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _topBar(),
+            const SizedBox(height: 6),
+            // En tableta la diapositiva crecería hasta dejar las notas sin lugar
+            ConstrainedBox(constraints: BoxConstraints(maxHeight: box.maxHeight * 0.48), child: _slide()),
+            const SizedBox(height: 10),
+            _toolbar(),
+            const SizedBox(height: 10),
+            Expanded(child: _notes()),
+            const SizedBox(height: 10),
+            SizedBox(height: 64, child: _navButtons(horizontal: true)),
+          ]),
+        ),
       );
 
-  Widget _landscapeLayout() => Padding(
-        padding: const EdgeInsets.all(8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: Center(child: _slide())),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 230,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _topBar(compact: true),
-              Align(alignment: Alignment.centerLeft, child: TimerChip(c.timer)),
-              const SizedBox(height: 8),
-              _toolbar(),
-              const SizedBox(height: 8),
-              Expanded(child: _notes()),
-              const SizedBox(height: 8),
-              SizedBox(height: 56, child: _navButtons(horizontal: true)),
-            ]),
-          ),
-        ]),
-      );
+  /// Diapositiva a la izquierda; herramientas, notas y botones en un panel a la derecha.
+  /// Si la pantalla es baja (teléfono acostado), el panel se desplaza y las notas van dentro.
+  Widget _landscapeLayout() => LayoutBuilder(builder: (context, box) {
+        final roomy = box.maxHeight >= 460;
+        final tools = [
+          Align(alignment: Alignment.centerLeft, child: TimerChip(c.timer)),
+          const SizedBox(height: 8),
+          _toolbar(),
+          const SizedBox(height: 8),
+        ];
+        return Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: Center(child: _slide())),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: (box.maxWidth * 0.32).clamp(260.0, 380.0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _topBar(compact: true),
+                if (roomy) ...[
+                  ...tools,
+                  Expanded(child: _notes()),
+                ] else
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        ...tools,
+                        _notes(scroll: false),
+                      ]),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                SizedBox(height: 56, child: _navButtons(horizontal: true)),
+              ]),
+            ),
+          ]),
+        );
+      });
 
   Widget _topBar({bool compact = false}) {
     final label = src.pageLabel;
@@ -187,7 +211,9 @@ class _DrawPageState extends State<DrawPage> {
           w = h * aspect;
         }
         src.request(page, (w * MediaQuery.devicePixelRatioOf(context)).clamp(480, 1800).round());
+        // heightFactor: ocupa solo el alto de la diapositiva, no todo el disponible
         return Center(
+          heightFactor: 1,
           child: SizedBox(
             width: w,
             height: h,
@@ -329,47 +355,49 @@ class _DrawPageState extends State<DrawPage> {
     }
 
     final page = _page;
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      Wrap(
-        spacing: 6,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.center,
-        children: [
-          toolBtn(InkTool.pen, Icons.edit_rounded, t('Pluma', 'Pen')),
-          toolBtn(InkTool.highlighter, Icons.border_color_rounded, t('Marcatextos', 'Highlighter')),
-          toolBtn(InkTool.laser, Icons.adjust_rounded, t('Puntero láser', 'Laser pointer')),
-          const SizedBox(width: 6),
-          for (var i = 0; i < _sizes.length; i++) sizeDot(i),
+    // Filas fijas (herramientas · grosores / colores · deshacer): nunca un elemento suelto en
+    // otro renglón. Si el ancho no alcanza para herramientas y grosores juntos, van en dos filas.
+    Widget row(List<Widget> children) => FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(width: 6), children[i]],
+          ]),
+        );
+    final tools = [
+      toolBtn(InkTool.pen, Icons.edit_rounded, t('Pluma', 'Pen')),
+      toolBtn(InkTool.highlighter, Icons.border_color_rounded, t('Marcatextos', 'Highlighter')),
+      toolBtn(InkTool.laser, Icons.adjust_rounded, t('Puntero láser', 'Laser pointer')),
+    ];
+    final sizes = [for (var i = 0; i < _sizes.length; i++) sizeDot(i)];
+    return LayoutBuilder(
+      builder: (context, box) => Column(mainAxisSize: MainAxisSize.min, children: [
+        if (box.maxWidth >= 330)
+          row([...tools, const SizedBox(width: 4), ...sizes])
+        else ...[
+          row(tools),
+          const SizedBox(height: 6),
+          row(sizes),
         ],
-      ),
-      const SizedBox(height: 8),
-      _colorsRow(colorDot, page),
-    ]);
+        const SizedBox(height: 8),
+        row([
+          for (final col in _colors) colorDot(col),
+          IconButton(
+            onPressed: ink.hasInk(page) ? () => ink.undo(page) : null,
+            icon: const Icon(Icons.undo_rounded),
+            tooltip: t('Deshacer', 'Undo'),
+          ),
+          IconButton(
+            onPressed: ink.hasInk(page) ? () => ink.clearPage(page) : null,
+            icon: const Icon(Icons.delete_sweep_rounded),
+            tooltip: t('Borrar esta diapositiva', 'Clear this slide'),
+          ),
+        ]),
+      ]),
+    );
   }
 
-  Widget _colorsRow(Widget Function(Color) colorDot, int page) => Wrap(
-      spacing: 6,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      alignment: WrapAlignment.center,
-      children: [
-        for (final col in _colors) colorDot(col),
-        const SizedBox(width: 4),
-        IconButton(
-          onPressed: ink.hasInk(page) ? () => ink.undo(page) : null,
-          icon: const Icon(Icons.undo_rounded),
-          tooltip: t('Deshacer', 'Undo'),
-        ),
-        IconButton(
-          onPressed: ink.hasInk(page) ? () => ink.clearPage(page) : null,
-          icon: const Icon(Icons.delete_sweep_rounded),
-          tooltip: t('Borrar esta diapositiva', 'Clear this slide'),
-        ),
-      ],
-    );
-
-  Widget _notes() {
+  /// [scroll]: false cuando ya va dentro de algo que se desplaza (panel horizontal bajo).
+  Widget _notes({bool scroll = true}) {
     final s = c.currentSlide;
     if (c.deck == null) {
       return Center(
@@ -382,15 +410,13 @@ class _DrawPageState extends State<DrawPage> {
       );
     }
     final has = s != null && s.notes.trim().isNotEmpty;
+    final text = Text(
+      has ? s.notes : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
+      style: TextStyle(fontSize: 16, height: 1.4, color: has ? Pal.text : Pal.off),
+    );
     return SrCard(
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      child: SingleChildScrollView(
-        key: ValueKey(c.slide),
-        child: Text(
-          has ? s.notes : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
-          style: TextStyle(fontSize: 16, height: 1.4, color: has ? Pal.text : Pal.off),
-        ),
-      ),
+      child: scroll ? SingleChildScrollView(key: ValueKey(c.slide), child: text) : text,
     );
   }
 

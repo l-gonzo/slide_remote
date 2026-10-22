@@ -131,6 +131,49 @@ abstract final class Sp {
   static const page = 20.0;
 }
 
+/// Puntos de quiebre por ancho disponible (px lógicos), los de Material 3.
+abstract final class Bp {
+  /// Desde aquí: tableta vertical o ventana mediana.
+  static const medium = 600.0;
+
+  /// Desde aquí: tableta horizontal, laptop. Hay espacio para dos paneles.
+  static const expanded = 840.0;
+
+  /// Ancho máximo de una columna: más ancha, los renglones y botones se estiran de más.
+  static const column = 720.0;
+}
+
+/// Limita el ancho de [child] y lo centra arriba (pantallas anchas).
+class MaxWidth extends StatelessWidget {
+  const MaxWidth({super.key, required this.child, this.max = Bp.column});
+  final Widget child;
+  final double max;
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(constraints: BoxConstraints(maxWidth: max), child: child),
+      );
+}
+
+/// Dos botones lado a lado; uno debajo del otro si así no caben (pantalla angosta o texto grande).
+class ButtonPair extends StatelessWidget {
+  const ButtonPair(this.first, this.second, {super.key, this.minEach = 150});
+  final Widget first, second;
+
+  /// Ancho mínimo de cada botón (con texto al 100 %) para ir lado a lado.
+  final double minEach;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final need = MediaQuery.textScalerOf(context).scale(minEach) * 2 + Sp.s + 2;
+        if (box.maxWidth >= need) {
+          return Row(children: [Expanded(child: first), const SizedBox(width: Sp.s + 2), Expanded(child: second)]);
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [first, const SizedBox(height: Sp.s), second]);
+      });
+}
+
 /// Radios de las formas.
 abstract final class Rad {
   static const s = 10.0; // chips, campos pequeños
@@ -260,6 +303,9 @@ ThemeData buildTheme() {
     onPrimary: p.onAccent,
     secondary: p.accent,
     onSecondary: p.onAccent,
+    // Botones tonales y chips elegidos: superficie del tema, no el verde azulado por defecto
+    secondaryContainer: p.raiseHi,
+    onSecondaryContainer: p.ink,
     surface: p.bg,
     onSurface: p.ink,
     surfaceContainerLowest: p.bg,

@@ -47,7 +47,8 @@ class WifiClient extends ChangeNotifier {
   void Function(int version, int port)? onNotes;
 
   /// La PC proyecta con Zlide: (página, total). 0 0 = no está proyectando.
-  void Function(int page, int total)? onPage;
+  /// [version] identifica el PDF que proyecta la PC (0 si la app de escritorio no lo manda).
+  void Function(int page, int total, int version)? onPage;
 
   /// Dirección de la PC elegida (para pedirle las notas).
   InternetAddress? get targetAddress => _targetAddress;
@@ -96,12 +97,17 @@ class WifiClient extends ChangeNotifier {
   }
 
   /// true si el datagrama se pudo enviar (no garantiza que llegue: es UDP).
-  bool send(int cmd) {
+  bool send(int cmd) => _sendRaw(Udp.command(cmd));
+
+  /// Ir a la diapositiva [n] (ver [Udp.goTo]).
+  bool sendGoTo(int n) => _sendRaw(Udp.goTo(n));
+
+  bool _sendRaw(String msg) {
     final s = _socket;
     final addr = _targetAddress;
     final pc = target;
     if (s == null || addr == null || pc == null) return false;
-    return s.send(ascii.encode(Udp.command(cmd)), addr, pc.port) > 0;
+    return s.send(ascii.encode(msg), addr, pc.port) > 0;
   }
 
   // ------------------------------------------------------------------ interno
@@ -119,7 +125,8 @@ class WifiClient extends ChangeNotifier {
           final p = msg.split(' ');
           final page = p.length > 2 ? int.tryParse(p[2]) : null;
           final total = p.length > 3 ? int.tryParse(p[3]) : null;
-          if (page != null && total != null) onPage?.call(page, total);
+          final version = p.length > 4 ? int.tryParse(p[4]) ?? 0 : 0;
+          if (page != null && total != null) onPage?.call(page, total, version);
           return;
         }
         if (msg.startsWith('${Udp.prefix} NOTES ')) {

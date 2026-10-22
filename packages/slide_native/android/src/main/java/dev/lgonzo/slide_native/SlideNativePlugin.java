@@ -11,6 +11,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.view.KeyEvent;
 import android.view.Window;
 
@@ -285,8 +288,38 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 result.success(key != null && kb.tap((byte) (int) key));
                 break;
             }
+            case "vibrate": {
+                Integer count = call.argument("count");
+                vibrate(count == null ? 1 : count);
+                result.success(null);
+                break;
+            }
             default:
                 result.notImplemented();
+        }
+    }
+
+    /** Aviso discreto del cronómetro: [count] pulsos cortos. */
+    @SuppressWarnings("deprecation")
+    private void vibrate(int count) {
+        if (appContext == null || count < 1) return;
+        Vibrator v;
+        if (Build.VERSION.SDK_INT >= 31) {
+            VibratorManager vm = (VibratorManager) appContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            v = vm == null ? null : vm.getDefaultVibrator();
+        } else {
+            v = (Vibrator) appContext.getSystemService(Context.VIBRATOR_SERVICE);
+        }
+        if (v == null || !v.hasVibrator()) return;
+        long[] pattern = new long[count * 2];
+        for (int i = 0; i < count; i++) {
+            pattern[i * 2] = i == 0 ? 0 : 180; // pausa
+            pattern[i * 2 + 1] = 80;          // pulso
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            v.vibrate(VibrationEffect.createWaveform(pattern, -1));
+        } else {
+            v.vibrate(pattern, -1);
         }
     }
 
