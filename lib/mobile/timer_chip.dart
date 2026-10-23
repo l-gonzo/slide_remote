@@ -161,10 +161,10 @@ class _TargetSheetState extends State<_TargetSheet> {
           Text(t('Tiempo objetivo', 'Target time'), style: Txt.title(26)),
           const SizedBox(height: Sp.s),
           Text(
-            t('El teléfono vibra cuando quedan 5 minutos, en 1 y al terminar. El cronómetro cuenta hacia atrás '
-                'y pasa a ámbar y luego a rojo.',
-                'The phone vibrates with 5 minutes left, at 1 and when time is up. The timer counts down '
-                'and turns amber, then red.'),
+            t('El cronómetro cuenta hacia atrás y pasa a ámbar y luego a rojo. El teléfono ${tm.alertsSummary()} '
+                '(se cambia en Ajustes).',
+                'The timer counts down and turns amber, then red. The phone ${tm.alertsSummary()} '
+                '(change it in Settings).'),
             style: Txt.text(15, color: Pal.muted),
           ),
           const SizedBox(height: Sp.l),

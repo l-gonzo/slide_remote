@@ -8,9 +8,12 @@ import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -79,6 +82,7 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         events.setStreamHandler(null);
         if (hid != null) ((BtHidKeyboard) hid).stop();
         hid = null;
+        setLowLatencyWifi(false);
     }
 
     // ================================================================ ActivityAware
@@ -185,6 +189,20 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 result.success(null);
                 return;
             }
+            case "vibrate": {
+                Integer count = call.argument("count");
+                Integer ms = call.argument("ms");
+                Double strength = call.argument("strength");
+                vibrate(count == null ? 1 : count, ms == null ? 550 : ms, strength == null ? 1 : strength);
+                result.success(null);
+                return;
+            }
+            case "setLowLatencyWifi": {
+                Boolean on = call.argument("enabled");
+                setLowLatencyWifi(on != null && on);
+                result.success(null);
+                return;
+            }
             case "hidSupported":
                 result.success(Build.VERSION.SDK_INT >= 28 && BluetoothAdapter.getDefaultAdapter() != null);
                 return;
@@ -288,20 +306,43 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 result.success(key != null && kb.tap((byte) (int) key));
                 break;
             }
-            case "vibrate": {
-                Integer count = call.argument("count");
-                vibrate(count == null ? 1 : count);
-                result.success(null);
-                break;
-            }
             default:
                 result.notImplemented();
         }
     }
 
-    /** Aviso discreto del cronómetro: [count] pulsos cortos. */
+    private WifiManager.WifiLock wifiLock;
+
+    /**
+     * Vista de dibujo: sin el ahorro de energía del WiFi, que junta los paquetes y los manda
+     * cada ~100 ms (el trazo llega a tirones a la PC).
+     */
     @SuppressWarnings("deprecation")
-    private void vibrate(int count) {
+    private void setLowLatencyWifi(boolean on) {
+        try {
+            if (on) {
+                if (wifiLock == null) {
+                    if (appContext == null) return;
+                    WifiManager wm = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
+                    if (wm == null) return;
+                    int mode = Build.VERSION.SDK_INT >= 29
+                            ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                            : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+                    wifiLock = wm.createWifiLock(mode, "zlide:draw");
+                    wifiLock.setReferenceCounted(false);
+                }
+                wifiLock.acquire();
+            } else if (wifiLock != null && wifiLock.isHeld()) {
+                wifiLock.release();
+            }
+        } catch (RuntimeException e) {
+            android.util.Log.w("slide_native", "setLowLatencyWifi: " + e);
+        }
+    }
+
+    /** Aviso discreto del cronómetro: [count] pulsos de [ms] con intensidad [strength] (0–1). */
+    @SuppressWarnings("deprecation")
+    private void vibrate(int count, int ms, double strength) {
         if (appContext == null || count < 1) return;
         Vibrator v;
         if (Build.VERSION.SDK_INT >= 31) {
@@ -312,12 +353,27 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         }
         if (v == null || !v.hasVibrator()) return;
         long[] pattern = new long[count * 2];
+        int[] amps = new int[count * 2];
         for (int i = 0; i < count; i++) {
-            pattern[i * 2] = i == 0 ? 0 : 180; // pausa
-            pattern[i * 2 + 1] = 80;          // pulso
+            pattern[i * 2] = i == 0 ? 0 : 250; // pausa
+            pattern[i * 2 + 1] = Math.max(20, ms); // pulso
+            amps[i * 2 + 1] = (int) Math.max(1, Math.min(255, Math.round(strength * 255)));
         }
+        // Como alarma: sin uso declarado, Android trata los patrones cortos como vibración táctil
+        // (su propia intensidad, a veces muy baja) y los largos de otra forma, así que un aviso
+        // "suave" podía sentirse más fuerte que uno "fuerte". Además suena aunque esté en No molestar.
         if (Build.VERSION.SDK_INT >= 26) {
-            v.vibrate(VibrationEffect.createWaveform(pattern, -1));
+            VibrationEffect effect = v.hasAmplitudeControl()
+                    ? VibrationEffect.createWaveform(pattern, amps, -1)
+                    : VibrationEffect.createWaveform(pattern, -1);
+            if (Build.VERSION.SDK_INT >= 33) {
+                v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM));
+            } else {
+                v.vibrate(effect, new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build());
+            }
         } else {
             v.vibrate(pattern, -1);
         }

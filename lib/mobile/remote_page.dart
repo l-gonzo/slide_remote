@@ -1212,11 +1212,35 @@ class _RemotePageState extends State<RemotePage> {
                     subtitle: Text(c.timer.target == null
                         ? t('Sin objetivo · también manteniendo presionado el cronómetro',
                             'No target · also by holding down the timer')
-                        : t('${c.timer.target!.inMinutes} min · vibra a los 5 y 1 min restantes y al terminar',
-                            '${c.timer.target!.inMinutes} min · vibrates with 5 and 1 min left and when time is up')),
+                        : '${c.timer.target!.inMinutes} min · ${c.timer.alertsSummary()}'),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => showTargetPicker(ctx, c.timer),
                   ),
+                  const SizedBox(height: Sp.m),
+                  _labeled(
+                    t('Fuerza de la vibración', 'Vibration strength'),
+                    Row(children: [
+                      Text(t('Suave', 'Soft'), style: Txt.text(14, color: Pal.muted)),
+                      Expanded(
+                        child: Slider(
+                          value: c.timer.vibe,
+                          onChanged: c.timer.setVibe,
+                          onChangeEnd: (_) => c.timer.previewVibe(),
+                        ),
+                      ),
+                      Text(t('Fuerte', 'Strong'), style: Txt.text(14, color: Pal.muted)),
+                    ]),
+                  ),
+                  const SizedBox(height: Sp.m),
+                  Row(children: [
+                    Expanded(child: Text(t('Avisos', 'Alerts'), style: Txt.text(15, weight: FontWeight.w600))),
+                    TextButton(onPressed: c.timer.resetAlerts, child: Text(t('Restablecer', 'Reset'))),
+                  ]),
+                  Text(t('Cuándo vibra y cuántas veces. El cronómetro pasa a ámbar en el primero y a rojo en el segundo.',
+                          'When it vibrates and how many times. The timer turns amber at the first and red at the second.'),
+                      style: Txt.text(14, color: Pal.muted)),
+                  const SizedBox(height: Sp.s),
+                  for (var i = 0; i < c.timer.alerts.length; i++) _alertRow(i),
                   const SizedBox(height: Sp.xl),
                   Caption(t('Apariencia', 'Appearance')),
                   _labeled(
@@ -1327,6 +1351,48 @@ class _RemotePageState extends State<RemotePage> {
         style: Txt.text(13, color: Pal.muted, height: 1.4),
       ),
     ];
+  }
+
+  /// Aviso [i] del cronómetro: minutos antes del final (el último es al terminar) y vibraciones.
+  Widget _alertRow(int i) {
+    final tm = c.timer;
+    final a = tm.alerts[i];
+    final last = i == tm.alerts.length - 1;
+    final m = a.left.inMinutes;
+    final (lo, hi) = tm.alertRange(i);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Sp.m),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text(last ? t('Al terminar', 'When time is up') : t('Quedan $m min', '$m min left'),
+                style: Txt.text(15)),
+          ),
+          if (!last) ...[
+            IconButton(
+              onPressed: m > lo ? () => tm.setAlert(i, minutes: m - 1) : null,
+              tooltip: t('Un minuto menos', 'One minute less'),
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            IconButton(
+              onPressed: m < hi ? () => tm.setAlert(i, minutes: m + 1) : null,
+              tooltip: t('Un minuto más', 'One minute more'),
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ],
+        ]),
+        Segmented<int>(
+          values: const [0, 1, 2, 3],
+          labels: [t('No vibra', 'Off'), t('1 vez', 'Once'), t('2 veces', 'Twice'), t('3 veces', '3 times')],
+          selected: a.pulses,
+          onChanged: (n) {
+            tm.setAlert(i, pulses: n);
+            tm.previewVibe(n);
+          },
+          accent: true,
+        ),
+      ]),
+    );
   }
 
   Widget _labeled(String label, Widget child) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

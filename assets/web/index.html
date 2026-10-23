@@ -14,7 +14,9 @@
   #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
   canvas { display: block; }
   #wrap { position: relative; }
-  #ink { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #ink, #live { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #laser { position: absolute; left: 0; top: 0; display: none; border-radius: 50%; pointer-events: none;
+    will-change: transform; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
     justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #141110; }
   #empty.show { display: flex; }
@@ -38,7 +40,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><div id="wrap"><canvas id="c"></canvas><canvas id="ink"></canvas></div></div>
+<div id="stage"><div id="wrap"><canvas id="c"></canvas><canvas id="ink"></canvas><canvas id="live"></canvas><div id="laser"></div></div></div>
 <div id="empty" class="show">
   <div class="mark">▶</div>
   <h1>Zlide</h1>
@@ -170,10 +172,12 @@
         canvas.style.width = (off.width / dpr) + 'px';
         canvas.style.height = (off.height / dpr) + 'px';
         ctx.drawImage(off, 0, 0);
-        inkCanvas.width = off.width;
-        inkCanvas.height = off.height;
-        inkCanvas.style.width = canvas.style.width;
-        inkCanvas.style.height = canvas.style.height;
+        for (const c of [inkCanvas, liveCanvas]) {
+          c.width = off.width;
+          c.height = off.height;
+          c.style.width = canvas.style.width;
+          c.style.height = canvas.style.height;
+        }
         shown = target;
         drawInk();
         pg.textContent = `${page} / ${total}`;
@@ -242,7 +246,7 @@
         for (const [k, v] of Object.entries(msg.pages || {})) inkPages.set(Number(k), v);
         drawInk();
       }
-      else if (msg.t === 'laser') { laser = msg.off ? null : { page: msg.page, x: msg.x, y: msg.y, s: msg.s || 1 }; drawInk(); }
+      else if (msg.t === 'laser') onLaser(msg);
       else if (msg.t === 'lang') { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
       else if (msg.t === 'hello') {
         if (msg.lang && msg.lang !== lang) { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
@@ -260,63 +264,214 @@
 
   // ------------------------------------------------------------ dibujos desde el teléfono
   // Coordenadas de 0 a 1 respecto a la página; grosor como fracción del ancho.
-  const inkPages = new Map(); // página -> [{id, tool, color, w, pts: [x, y, x, y, …]}]
-  let laser = null; // {page, x, y, s (tamaño)}
-  let inkQueued = false;
+  //
+  // Fluidez: los mensajes que traen `ts` (cuándo se tocó, en el reloj del teléfono) se muestran
+  // con un retraso pequeño y su ritmo original, así no se notan los tirones de la red. Si la red
+  // se atrasa más que eso, el reloj de reproducción se frena en vez de detenerse y luego acelera
+  // un poco hasta ponerse al día: el movimiento cambia de velocidad, pero no salta. Los
+  // trazos terminados se pintan una sola vez en #ink; en #live solo los que se están dibujando,
+  // y el láser es un elemento aparte que mueve la tarjeta gráfica sin repintar nada.
+  // Sin `ts` (versión anterior de la app) se muestran en cuanto llegan.
+  const liveCanvas = document.getElementById('live');
+  const liveCtx = liveCanvas.getContext('2d');
+  const laserEl = document.getElementById('laser');
+  const inkPages = new Map(); // página -> [{id, tool, color, w, pts: [x, y, x, y, …], _t: [ts por punto]}]
+  let laser = null; // {page, x, y, s (tamaño)}: lo que se ve ahora
+  const laserQ = []; // {t, page, x, y, s, off}: lo que falta mostrar
+  let committed = 0; // trazos de la página mostrada ya pintados en #ink
 
-  function drawInk() {
-    if (inkQueued) return;
-    inkQueued = true;
-    requestAnimationFrame(() => {
-      inkQueued = false;
-      const W = inkCanvas.width, H = inkCanvas.height;
-      inkCtx.clearRect(0, 0, W, H);
-      if (!doc || !W) return;
-      for (const s of inkPages.get(shown) || []) strokeOn(s, W, H);
-      if (laser && laser.page === shown) {
-        const x = laser.x * W, y = laser.y * H, r = (W * 0.012 + 4) * laser.s;
-        inkCtx.save();
-        inkCtx.shadowColor = 'rgba(255,45,45,.9)';
-        inkCtx.shadowBlur = r * 2.5;
-        inkCtx.fillStyle = '#ff2d2d';
-        inkCtx.beginPath(); inkCtx.arc(x, y, r, 0, Math.PI * 2); inkCtx.fill();
-        inkCtx.restore();
-        inkCtx.fillStyle = '#ffd0d0';
-        inkCtx.beginPath(); inkCtx.arc(x, y, r * 0.45, 0, Math.PI * 2); inkCtx.fill();
-      }
-    });
+  // Reloj de reproducción, en la hora del teléfono
+  let base = null; // mínimo de (llegada − ts): diferencia de relojes más la red en su mejor momento
+  let jitter = 8; // ms: cuánto se atrasan en promedio los mensajes respecto al más rápido
+  let latest = -Infinity; // ts más reciente recibido
+  let playT = null; // lo que se muestra ahora
+  let playAt = 0; // performance.now() de la última actualización de playT
+
+  function ideal() { return performance.now() - base - Math.min(Math.max(jitter * 1.5 + 8, 12), 50); }
+
+  function arrived(ts) {
+    const d = performance.now() - ts;
+    if (base === null || d - base > 1000) { base = d; playT = null; } // > 1 s: el teléfono reinició su reloj
+    else if (d < base) base = d;
+    jitter += (d - base - jitter) * 0.05;
+    // El teléfono manda cada ~12 ms mientras el dedo se mueve. Un hueco mayor es que el dedo
+    // estuvo quieto: no hay nada que mostrar en ese tramo, el reloj puede saltarlo.
+    if (playT !== null && ts - latest > 60 && playT >= latest - 1) playT = Math.max(playT, Math.min(ideal(), ts));
+    if (ts > latest) latest = ts;
   }
 
-  function strokeOn(s, W, H) {
-    const p = s.pts;
-    if (!p || p.length < 2) return;
-    const hl = s.tool === 'hl';
-    inkCtx.save();
-    inkCtx.globalAlpha = hl ? 0.38 : 1;
-    inkCtx.strokeStyle = inkCtx.fillStyle = s.color;
-    inkCtx.lineWidth = Math.min(Math.max(s.w * W, 1.5), 200);
-    inkCtx.lineCap = hl ? 'square' : 'round';
-    inkCtx.lineJoin = 'round';
-    if (p.length === 2) {
-      inkCtx.beginPath(); inkCtx.arc(p[0] * W, p[1] * H, inkCtx.lineWidth / 2, 0, Math.PI * 2); inkCtx.fill();
-    } else {
-      inkCtx.beginPath();
-      inkCtx.moveTo(p[0] * W, p[1] * H);
-      for (let i = 2; i < p.length - 2; i += 2) {
-        const mx = (p[i] + p[i + 2]) / 2, my = (p[i + 1] + p[i + 3]) / 2;
-        inkCtx.quadraticCurveTo(p[i] * W, p[i + 1] * H, mx * W, my * H);
+  function playTime() {
+    if (base === null) return Infinity;
+    const now = performance.now();
+    const target = ideal();
+    if (playT === null || target - playT > 400) {
+      playT = Math.min(target, latest); // primera vez, o un atraso tan largo que ya no vale la pena alcanzarlo
+    } else if (playT < latest) {
+      // Más rápido si se quedó atrás, más lento si se adelantó; nunca más allá de lo recibido
+      const rate = Math.min(Math.max(1 + (target - playT) / 120, 0.5), 2);
+      // Sin cuadros mientras no llega nada: no contar ese tiempo de golpe
+      playT = Math.min(playT + Math.min(now - playAt, 34) * rate, latest);
+    } // si no hay nada más reciente, se queda donde está hasta que llegue
+    playAt = now;
+    return playT;
+  }
+
+  let raf = 0;
+  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+
+  /// Todo de nuevo (cambio de página, deshacer, borrar, reconexión).
+  function drawInk() {
+    inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+    committed = 0;
+    kick();
+  }
+
+  // Un trazo pasa a #ink cuando ya se mostró entero y lleva un rato sin puntos nuevos
+  function settled(s, pt) {
+    return !s._t || !s._t.length || (pt >= s._t[s._t.length - 1] && performance.now() - s._seen > 500);
+  }
+
+  function visible(s, pt) {
+    if (!s._t) return s.pts.length / 2;
+    let n = s._t.length;
+    while (n > 0 && s._t[n - 1] > pt) n--;
+    return n;
+  }
+
+  function frame() {
+    raf = 0;
+    const pt = playTime();
+    let busy = false;
+
+    // Láser: posición interpolada entre los dos mensajes que rodean al reloj
+    while (laserQ.length) {
+      while (laserQ.length > 1 && laserQ[1].t <= pt) laserQ.shift();
+      const a = laserQ[0];
+      if (a.t > pt) break;
+      if (a.off) { laser = null; laserQ.shift(); continue; }
+      const b = laserQ[1];
+      if (b && !b.off && b.page === a.page) {
+        const k = (pt - a.t) / (b.t - a.t);
+        laser = { page: a.page, s: b.s, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+      } else {
+        laser = a;
       }
-      inkCtx.lineTo(p[p.length - 2] * W, p[p.length - 1] * H);
-      inkCtx.stroke();
+      break;
     }
-    inkCtx.restore();
+    if (laserQ.length && laserQ[laserQ.length - 1].t > pt) busy = true;
+    placeLaser();
+
+    // Trazos
+    const W = inkCanvas.width, H = inkCanvas.height;
+    if (doc && W) {
+      const list = inkPages.get(shown) || [];
+      // En orden, para que se encimen igual que en el teléfono
+      while (committed < list.length && settled(list[committed], pt)) strokeOn(inkCtx, list[committed++], W, H);
+      liveCtx.clearRect(0, 0, W, H);
+      for (let i = committed; i < list.length; i++) {
+        strokeOn(liveCtx, list[i], W, H, visible(list[i], pt));
+        busy = true;
+      }
+    }
+    if (busy) kick();
+  }
+
+  let laserR = 0;
+  function placeLaser() {
+    if (!laser || laser.page !== shown || !doc || !inkCanvas.width) {
+      laserEl.style.display = 'none';
+      return;
+    }
+    const cssW = parseFloat(inkCanvas.style.width), cssH = parseFloat(inkCanvas.style.height);
+    const dpr = inkCanvas.width / cssW;
+    const r = (inkCanvas.width * 0.012 + 4) * laser.s / dpr;
+    if (r !== laserR) {
+      laserR = r;
+      laserEl.style.width = laserEl.style.height = (2 * r) + 'px';
+      laserEl.style.background = 'radial-gradient(circle closest-side, #ffd0d0 0 45%, #ff2d2d 47% 100%)';
+      laserEl.style.boxShadow = `0 0 ${r * 2.5}px rgba(255,45,45,.9)`;
+    }
+    laserEl.style.transform = `translate3d(${laser.x * cssW - r}px, ${laser.y * cssH - r}px, 0)`;
+    laserEl.style.display = 'block';
+  }
+
+  function onLaser(m) {
+    const q = { page: m.page, x: m.x, y: m.y, s: m.s || 1, off: !!m.off };
+    if (m.ts == null) {
+      laserQ.length = 0;
+      laser = q.off ? null : q;
+      placeLaser();
+      return;
+    }
+    arrived(m.ts);
+    q.t = m.ts;
+    laserQ.push(q);
+    kick();
+  }
+
+  /// [n]: cuántos puntos dibujar (los que ya tocan según el reloj).
+  function strokeOn(c, s, W, H, n) {
+    const p = s.pts;
+    if (!p) return;
+    const len = n === undefined ? p.length : Math.min(n * 2, p.length);
+    if (len < 2) return;
+    const hl = s.tool === 'hl';
+    c.save();
+    c.globalAlpha = hl ? 0.38 : 1;
+    c.strokeStyle = c.fillStyle = s.color;
+    c.lineWidth = Math.min(Math.max(s.w * W, 1.5), 200);
+    c.lineCap = hl ? 'square' : 'round';
+    c.lineJoin = 'round';
+    if (len === 2) {
+      c.beginPath(); c.arc(p[0] * W, p[1] * H, c.lineWidth / 2, 0, Math.PI * 2); c.fill();
+    } else {
+      c.beginPath();
+      c.moveTo(p[0] * W, p[1] * H);
+      for (let i = 2; i < len - 2; i += 2) {
+        const mx = (p[i] + p[i + 2]) / 2, my = (p[i + 1] + p[i + 3]) / 2;
+        c.quadraticCurveTo(p[i] * W, p[i + 1] * H, mx * W, my * H);
+      }
+      c.lineTo(p[len - 2] * W, p[len - 1] * H);
+      c.stroke();
+    }
+    c.restore();
   }
 
   function onInk(m) {
     const list = inkPages.get(m.page) || [];
-    if (m.op === 'add') { list.push(m.s); inkPages.set(m.page, list); }
-    else if (m.op === 'pts') { const s = list.find((x) => x.id === m.id); if (s) s.pts.push(...m.pts); }
-    else if (m.op === 'undo') list.pop();
+    if (m.op === 'add') {
+      const s = m.s;
+      list.push(s);
+      inkPages.set(m.page, list);
+      if (m.ts != null) {
+        arrived(m.ts);
+        s._t = new Array(s.pts.length / 2).fill(m.ts);
+        s._seen = performance.now();
+      }
+      if (m.page === shown) kick();
+      return;
+    }
+    if (m.op === 'pts') {
+      let i = list.length - 1;
+      while (i >= 0 && list[i].id !== m.id) i--;
+      if (i < 0) return;
+      const s = list[i];
+      if (s._t) {
+        // Los puntos de un mensaje se tocaron entre el mensaje anterior y `ts`
+        const prev = s._t.length ? s._t[s._t.length - 1] : (m.ts ?? 0);
+        const ts = m.ts ?? prev;
+        if (m.ts != null) arrived(m.ts);
+        const n = m.pts.length / 2;
+        for (let k = 1; k <= n; k++) s._t.push(prev + (ts - prev) * k / n);
+        s._seen = performance.now();
+      }
+      s.pts.push(...m.pts);
+      if (m.page !== shown) return;
+      if (i < committed) drawInk(); // siguió un trazo que ya se daba por terminado
+      else kick();
+      return;
+    }
+    if (m.op === 'undo') list.pop();
     else if (m.op === 'clear') inkPages.delete(m.page);
     else if (m.op === 'clearAll') inkPages.clear();
     if (m.page === shown || m.op === 'clearAll') drawInk();

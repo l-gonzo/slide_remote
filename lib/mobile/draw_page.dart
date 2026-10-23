@@ -6,6 +6,7 @@ import '../common/i18n.dart';
 import '../common/theme.dart';
 import 'ink.dart';
 import 'draw_source.dart';
+import 'native_bridge.dart';
 import 'orientation.dart';
 import 'remote_controller.dart';
 import 'timer_chip.dart';
@@ -52,6 +53,7 @@ class _DrawPageState extends State<DrawPage> {
   void initState() {
     super.initState();
     _loadSizes();
+    NativeBridge.setLowLatencyWifi(true);
   }
 
   Future<void> _loadSizes() async {
@@ -80,6 +82,7 @@ class _DrawPageState extends State<DrawPage> {
   @override
   void dispose() {
     src.close();
+    NativeBridge.setLowLatencyWifi(false);
     defaultOrientations();
     super.dispose();
   }
@@ -247,19 +250,37 @@ class _DrawPageState extends State<DrawPage> {
                               : const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
                   ),
-                GestureDetector(
+                // Listener y no un gesto de arrastre: el trazo empieza al tocar, sin esperar
+                // a que el dedo recorra la distancia mínima de un arrastre
+                Listener(
                   behavior: HitTestBehavior.opaque,
-                  onPanStart: (d) => _begin(d.localPosition, Size(w, h)),
-                  onPanUpdate: (d) => ink.move(page, _norm(d.localPosition, Size(w, h)), _tool),
-                  onPanEnd: (_) => ink.end(),
-                  onPanCancel: ink.end,
-                  child: CustomPaint(painter: _InkPainter(ink, page)),
+                  onPointerDown: (e) {
+                    if (_pointer != null) return; // un solo dedo dibuja
+                    _pointer = e.pointer;
+                    _begin(e.localPosition, Size(w, h));
+                  },
+                  onPointerMove: (e) {
+                    if (e.pointer == _pointer) ink.move(page, _norm(e.localPosition, Size(w, h)), _tool);
+                  },
+                  onPointerUp: _lift,
+                  onPointerCancel: _lift,
+                  // Capa propia: al moverse el dedo no se vuelve a pintar la diapositiva
+                  child: RepaintBoundary(child: CustomPaint(painter: _InkPainter(ink, page))),
                 ),
               ]),
             ),
           ),
         );
       });
+
+  /// Dedo que está dibujando.
+  int? _pointer;
+
+  void _lift(PointerEvent e) {
+    if (e.pointer != _pointer) return;
+    _pointer = null;
+    ink.end();
+  }
 
   Offset _norm(Offset p, Size s) => Offset((p.dx / s.width).clamp(0.0, 1.0), (p.dy / s.height).clamp(0.0, 1.0));
 
@@ -460,7 +481,7 @@ class _DrawPageState extends State<DrawPage> {
 
 /// Dibuja los trazos de una página (y el puntero láser) sobre la imagen.
 class _InkPainter extends CustomPainter {
-  _InkPainter(this.ink, this.page) : super(repaint: ink);
+  _InkPainter(this.ink, this.page) : super(repaint: ink.repaint);
   final InkBoard ink;
   final int page;
 

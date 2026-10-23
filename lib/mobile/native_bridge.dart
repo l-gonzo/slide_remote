@@ -32,6 +32,9 @@ abstract final class NativeBridge {
 
   static Future<void> setVolumeCapture(bool on) => call('setVolumeCapture', {'enabled': on});
 
+  /// Android: WiFi sin ahorro de energía mientras se dibuja (si no, los paquetes salen a tirones).
+  static Future<void> setLowLatencyWifi(bool on) => call('setLowLatencyWifi', {'enabled': on});
+
   /// Idioma de los mensajes que genera la parte nativa ('es' o 'en').
   static Future<void> setLanguage(String lang) => call('setLanguage', {'lang': lang});
 
@@ -127,14 +130,19 @@ abstract final class NativeBridge {
 
   // ---------------------------------------------------------------- vibración
 
-  /// [count] pulsos cortos (avisos del tiempo objetivo). Sin la parte nativa, vibración háptica.
-  static Future<void> vibrate(int count) async {
+  /// [count] pulsos de [ms] con intensidad [strength] (0–1) (avisos del tiempo objetivo).
+  /// Sin la parte nativa, vibración háptica.
+  static Future<void> vibrate(int count, {int ms = 550, double strength = 1}) async {
     try {
-      await _methods.invokeMethod<void>('vibrate', {'count': count});
+      await _methods.invokeMethod<void>('vibrate', {'count': count, 'ms': ms, 'strength': strength});
     } on MissingPluginException {
       for (var i = 0; i < count; i++) {
         if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 260));
-        await HapticFeedback.heavyImpact();
+        await (strength < 0.6
+            ? HapticFeedback.lightImpact()
+            : strength < 0.9
+                ? HapticFeedback.mediumImpact()
+                : HapticFeedback.heavyImpact());
       }
     } on PlatformException catch (e) {
       debugPrint('slide_native.vibrate: ${e.code} ${e.message}');

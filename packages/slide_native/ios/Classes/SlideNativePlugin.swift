@@ -1,5 +1,7 @@
+import AudioToolbox
 import AVFoundation
 import CoreBluetooth
+import CoreHaptics
 import Flutter
 import MediaPlayer
 import PDFKit
@@ -45,6 +47,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
 
     // ---- conversión a PDF
     private var converter: PresentationConverter?
+    private var haptics: CHHapticEngine?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = SlideNativePlugin()
@@ -90,7 +93,10 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             let arg = args?["arg"] as? Int
             result(bleSend(UInt8(clamping: cmd), arg: arg))
         case "vibrate":
-            vibrate(count: (args?["count"] as? Int) ?? 1)
+            vibrate(
+                count: (args?["count"] as? Int) ?? 1,
+                ms: (args?["ms"] as? Int) ?? 550,
+                strength: (args?["strength"] as? Double) ?? 1)
             result(nil)
         case "hidSupported":
             result(false)
@@ -281,13 +287,40 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         return true
     }
 
-    /// Aviso discreto del cronómetro: [count] toques hápticos seguidos.
-    private func vibrate(count: Int) {
-        let gen = UIImpactFeedbackGenerator(style: .heavy)
-        gen.prepare()
-        for i in 0..<max(1, count) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26 * Double(i)) {
-                gen.impactOccurred()
+    /// Aviso discreto del cronómetro: [count] vibraciones de [ms] con intensidad [strength] (0–1).
+    /// Al máximo, o sin Core Haptics, la vibración del sistema: la misma de una notificación.
+    private func vibrate(count: Int, ms: Int, strength: Double) {
+        let n = max(1, count)
+        let duration = max(0.02, Double(ms) / 1000)
+        if strength < 0.95 && CHHapticEngine.capabilitiesForHardware().supportsHaptics {
+            do {
+                if haptics == nil {
+                    let engine = try CHHapticEngine()
+                    engine.resetHandler = { [weak engine] in try? engine?.start() }
+                    haptics = engine
+                }
+                try haptics?.start()
+                // 250 ms de pausa entre pulsos, como en Android
+                let events = (0..<n).map { i in
+                    CHHapticEvent(
+                        eventType: .hapticContinuous,
+                        parameters: [
+                            CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(min(1, max(0, strength)))),
+                            CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5),
+                        ],
+                        relativeTime: (duration + 0.25) * Double(i),
+                        duration: duration)
+                }
+                let player = try haptics?.makePlayer(with: CHHapticPattern(events: events, parameters: []))
+                try player?.start(atTime: CHHapticTimeImmediate)
+                return
+            } catch {
+                NSLog("slide_native.vibrate: \(error)")
+            }
+        }
+        for i in 0..<n {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65 * Double(i)) {
+                AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
             }
         }
     }

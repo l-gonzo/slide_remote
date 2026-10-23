@@ -385,7 +385,14 @@ class PresentHost extends ChangeNotifier {
         final id = m['id'];
         for (final s in list.reversed) {
           if (s['id'] == id) {
-            s['pts'] = [...(s['pts'] as List? ?? const []), ...(m['pts'] as List? ?? const [])];
+            // Agregar en el lugar: copiar la lista entera en cada mensaje crece con el trazo
+            final pts = s['pts'];
+            final add = m['pts'] as List? ?? const [];
+            if (pts is List) {
+              pts.addAll(add);
+            } else {
+              s['pts'] = [...add];
+            }
             break;
           }
         }
