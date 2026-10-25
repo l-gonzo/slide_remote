@@ -7,6 +7,7 @@ import '../common/i18n.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'key_injector.dart';
+import 'quiet_mode.dart';
 import 'receiver_controller.dart';
 
 /// Ventana de la app de escritorio. Puede quedarse minimizada: no necesita el foco.
@@ -282,10 +283,11 @@ class _ReceiverPageState extends State<ReceiverPage> {
           _presentOption(
             icon: Icons.cast_rounded,
             title: t('Proyectar con Zlide', 'Present with Zlide'),
-            body: t('A pantalla completa en el navegador. Notas exactas, dibujo en vivo desde el teléfono, enlaces y videos. '
-                'Para .pptx/.odp hace falta LibreOffice (o PowerPoint en Windows).',
-                'Full screen in the browser. Exact notes, live drawing from the phone, links and videos. '
-                '.pptx/.odp need LibreOffice (or PowerPoint on Windows).'),
+            body: t('A pantalla completa en el navegador. Notas exactas, dibujo en vivo desde el teléfono, enlaces, videos, '
+                'animaciones y transiciones. Para .pptx/.odp hace falta LibreOffice (con solo PowerPoint en Windows, '
+                'sin animaciones).',
+                'Full screen in the browser. Exact notes, live drawing from the phone, links, videos, animations and '
+                'transitions. .pptx/.odp need LibreOffice (with only PowerPoint on Windows, no animations).'),
             primary: true,
             onTap: busy ? null : c.startPresenting,
           ),
@@ -399,6 +401,36 @@ class _ReceiverPageState extends State<ReceiverPage> {
                     'Keep that app in front: the phone changes slides with keys.'),
                 style: Txt.text(12.5, color: Pal.muted)),
           ),
+        if (p.animMissing)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 30),
+            child: Text(
+                t('Sin animaciones ni transiciones: instala LibreOffice (gratis) para verlas aquí, o usa «Presentar en su programa».',
+                    'No animations or transitions: install LibreOffice (free) to see them here, or use “Present in its own app”.'),
+                style: Txt.text(12.5, color: Pal.busy, height: 1.35)),
+          ),
+        const SizedBox(height: 10),
+        // Avisos de la PC: los vería el público
+        Row(children: [
+          Icon(QuietMode.active ? Icons.notifications_off_outlined : Icons.notifications_none_rounded,
+              size: 18, color: Pal.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              QuietMode.active
+                  ? t('Avisos de esta PC en silencio hasta que termines.', 'This computer’s notifications are muted until you finish.')
+                  : Platform.isWindows
+                      ? t('Activa «No molestar» en Windows para que no aparezcan avisos (se activa solo al duplicar pantalla).',
+                          'Turn on “Do not disturb” in Windows so no notifications show up (it turns on by itself when duplicating the display).')
+                      : Platform.isMacOS
+                          ? t('Activa «Concentración» en el Mac para que no aparezcan avisos (se activa sola al duplicar pantalla).',
+                              'Turn on Focus on the Mac so no notifications show up (it turns on by itself when mirroring the display).')
+                          : t('Silencia los avisos de esta PC para que no aparezcan durante la presentación.',
+                              'Silence this computer’s notifications so they don’t show up during the presentation.'),
+              style: Txt.text(12.5, color: Pal.muted, height: 1.35),
+            ),
+          ),
+        ]),
         const SizedBox(height: 10),
         Row(children: [
           Icon(Icons.lock_person_outlined, size: 18, color: Pal.muted),

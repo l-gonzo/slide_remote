@@ -86,6 +86,9 @@ class PresentHost extends ChangeNotifier {
   bool get _linkOpen => _linkState != null;
 
   int get viewers => _pages.length;
+
+  /// Proyectando una presentación (no un PDF) sin el SVG: falta LibreOffice para las animaciones.
+  bool get animMissing => active && _svg == null && !(_source?.toLowerCase().endsWith('.pdf') ?? true);
   String get url => 'http://127.0.0.1:${port()}/';
 
   // ---------------------------------------------------------------- iniciar / detener

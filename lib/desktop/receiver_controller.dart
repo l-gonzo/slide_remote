@@ -12,6 +12,7 @@ import 'key_injector.dart';
 import 'notes_host.dart';
 import 'office.dart';
 import 'present_host.dart';
+import 'quiet_mode.dart';
 
 enum BleStatus { unknown, off, unauthorized, unsupported, searching, connecting, connected }
 
@@ -162,6 +163,8 @@ class ReceiverController extends ChangeNotifier {
   bool _disposed = false;
 
   Future<void> init() async {
+    // Si la app se cerró de golpe presentando, los avisos quedaron en silencio: devolverlos
+    await QuietMode.restore();
     injector.init();
     await notes.start();
     await _startWifi();
@@ -178,6 +181,7 @@ class ReceiverController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    QuietMode.restore();
     _tick?.cancel();
     _udp?.close();
     _broadcast?.stop();
@@ -195,7 +199,17 @@ class ReceiverController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    _syncQuiet();
+    notifyListeners();
+  }
+
+  /// Avisos de la PC en silencio mientras se presenta (ver [QuietMode]).
+  bool _quietWanted = false;
+  void _syncQuiet() {
+    if (presenting == _quietWanted) return;
+    _quietWanted = presenting;
+    (presenting ? QuietMode.enable() : QuietMode.restore()).then((_) => _notify());
   }
 
   /// Reintentar permisos (tras activar Accesibilidad o arreglar /dev/uinput).
