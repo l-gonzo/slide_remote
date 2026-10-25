@@ -55,7 +55,7 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Modo “Transmitir desde móvil”:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
 - Lee notas de **PowerPoint, LibreOffice, OnlyOffice, WPS, Google Slides exportado** (`.pptx`, `.odp` y variantes).
 - La pantalla del teléfono no se apaga mientras la app está abierta.
-- **Tema claro y oscuro** con acento naranja: sigue el del sistema; se cambia en **Ajustes → Tema** del teléfono o con el botón ☀/☾ de la app de escritorio.
+- **Tema claro y oscuro** con acento índigo: sigue el del sistema; se cambia en **Ajustes → Tema** del teléfono o con el botón ☀/☾ de la app de escritorio.
 - **Español e inglés:** usa el idioma del sistema (si no es español, inglés). Se cambia en **Ajustes → Idioma** del teléfono o con el botón de idioma (🌐) de la app de escritorio. La página del modo “Transmitir desde móvil” usa el idioma de la app del teléfono.
 
 ## Modos de conexión
@@ -531,8 +531,15 @@ tool/package_macos.sh             crea .dmg
 
 ## Diseño
 
-La interfaz del teléfono sigue la dirección **“Atril”**: las notas son lo principal y se leen como en un atril, directamente sobre el fondo y con letra grande (Atkinson Hyperlegible, hecha para leerse con facilidad). El naranja se usa como “luz de cue” solo para lo que importa en ese momento: el botón Siguiente, el número de diapositiva, el progreso y el cronómetro en marcha.
+Zlide sigue la dirección **“Foco”**, pensada para presentar de pie, en salas con poca luz, mirando el teléfono de reojo:
 
-- **Tres estados** en la pantalla principal: *Preparar* (sin conexión: eliges modo y conectas), *Listo* (conectado y sin notas: botones grandes) y *Presentar* (con notas). Si la conexión se cae con notas en pantalla, las notas se quedan y aparece un aviso para reconectar.
-- **La conexión está siempre a un toque:** la línea de estado de arriba abre la hoja *Conexión* (modo, PC, dirección).
+- **Neutros fríos** (grafito con un toque azul): no deslumbran a oscuras y dejan que lo más claro de la pantalla sean las notas.
+- **Índigo “foco”** para la marca y la única acción principal de cada pantalla (Siguiente, empezar, lo elegido). El **contenedor tonal** (índigo muy suave) marca lo seleccionado o activo: el modo de conexión, el cronómetro en marcha, el contador de animaciones, los íconos de Ajustes.
+- **Notas como en un atril:** directamente sobre el fondo, con letra grande (Atkinson Hyperlegible, hecha para leerse con facilidad).
+- **Lo mejor de iOS y Material 3:** grupos redondeados con divisores interiores y selector segmentado con pastilla deslizable (iOS); botones tonales, estados claros y áreas táctiles de 48 px (Material 3). Contrastes WCAG AA en claro y oscuro.
+- **El pulgar encuentra todo en el mismo lugar:** “anterior” y “siguiente” siempre lado a lado, con “siguiente” del lado de la mano, con o sin notas.
+- El mismo sistema en las tres piezas: app del teléfono, app de escritorio y la página que ve el público. El ícono (`assets/icon/icon.svg`) se genera para todas las plataformas con `dart run flutter_launcher_icons`.
+
+- **Tres estados** en la pantalla principal: *Preparar* (sin conexión: eliges modo y conectas), *Listo* (conectado y sin notas: indicaciones y cómo agregar notas) y *Presentar* (con notas). Si la conexión se cae con notas en pantalla, las notas se quedan y aparece un aviso para reconectar.
+- **La conexión está siempre a un toque:** la pastilla de estado de arriba abre la hoja *Conexión* (modo, PC, dirección).
 - Todo el estilo está en `lib/common/theme.dart`: colores claro/oscuro (`Palette`), espaciado (`Sp`), radios (`Rad`), movimiento (`Mo`, respeta “reducir animaciones”) y tipografía (`Txt`).

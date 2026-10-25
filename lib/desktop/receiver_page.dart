@@ -108,7 +108,8 @@ class _ReceiverPageState extends State<ReceiverPage> {
               maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Pal.muted)),
         ]),
       ),
-      if (!compact) ...[Flexible(child: _hostChip()), const SizedBox(width: 6)],
+      // Ancho máximo (y no Flexible): así el título ocupa el resto y los controles quedan a la derecha
+      if (!compact) ...[ConstrainedBox(constraints: const BoxConstraints(maxWidth: 280), child: _hostChip()), const SizedBox(width: 6)],
       _themeMenu(),
       _languageMenu(),
     ]);
@@ -329,10 +330,10 @@ class _ReceiverPageState extends State<ReceiverPage> {
     bool primary = false,
   }) =>
       Material(
-        color: primary ? Pal.accent.withValues(alpha: Pal.p.dark ? 0.14 : 0.08) : Pal.bg,
+        color: primary ? Pal.accentSoft : Pal.bg,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Rad.m),
-          side: BorderSide(color: primary ? Pal.accent.withValues(alpha: 0.6) : Pal.rule),
+          side: BorderSide(color: primary ? Pal.accent : Pal.rule),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -498,7 +499,15 @@ class _ReceiverPageState extends State<ReceiverPage> {
     );
   }
 
-  Widget _row({required Conn conn, required IconData icon, required String title, required String detail, String? extra}) {
+  /// [error]: detalle técnico; no se muestra tal cual, sino detrás de "Ver detalles".
+  Widget _row({
+    required Conn conn,
+    required IconData icon,
+    required String title,
+    required String detail,
+    String? extra,
+    String? error,
+  }) {
     return SrCard(
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
@@ -520,6 +529,26 @@ class _ReceiverPageState extends State<ReceiverPage> {
               const SizedBox(height: 6),
               SelectableText(extra, style: monoStyle.copyWith(fontSize: 12, color: Pal.muted)),
             ],
+            if (error != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    minimumSize: const Size(0, 36),
+                    textStyle: Txt.text(13, weight: FontWeight.w600),
+                  ),
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(t('Detalles técnicos', 'Technical details')),
+                      content: SelectableText(error, style: monoStyle.copyWith(fontSize: 12.5, color: Pal.muted)),
+                      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(t('Cerrar', 'Close')))],
+                    ),
+                  ),
+                  child: Text(t('Ver detalles', 'See details')),
+                ),
+              ),
           ]),
         ),
       ]),
@@ -571,7 +600,7 @@ class _ReceiverPageState extends State<ReceiverPage> {
       icon: Icons.bluetooth,
       title: 'Bluetooth (iPhone)',
       detail: detail,
-      extra: c.bleError != null && c.bleStatus != BleStatus.connected ? c.bleError : null,
+      error: c.bleError != null && c.bleStatus != BleStatus.connected ? c.bleError : null,
     );
   }
 }

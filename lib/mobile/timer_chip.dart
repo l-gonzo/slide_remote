@@ -61,21 +61,24 @@ class _TimerChipState extends State<TimerChip> {
   Widget build(BuildContext context) {
     final tm = widget.timer;
     final running = tm.running;
-    // En marcha: naranja con su punto ("al aire"). Detenido: tinta tenue.
+    // Una pastilla: detenido, neutra; en marcha, índigo suave con su punto ("al aire").
     // Con objetivo: ámbar en los últimos 5 minutos y rojo en el último.
-    final fg = switch (tm.phase) {
+    final alert = switch (tm.phase) {
       TimerPhase.last when !tm.isZero => Pal.error,
       TimerPhase.warn when !tm.isZero => Pal.busy,
-      _ => running ? Pal.accent : (tm.isZero ? Pal.muted : Pal.ink),
+      _ => null,
     };
+    final fg = alert ?? (running ? Pal.onAccentSoft : (tm.isZero ? Pal.muted : Pal.ink));
+    final bg = alert?.withValues(alpha: 0.16) ?? (running ? Pal.accentSoft : Pal.raise);
     final size = widget.big ? 20.0 : 17.0;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Semantics(
         button: true,
         label: running ? t('Pausar cronómetro', 'Pause timer') : t('Iniciar cronómetro', 'Start timer'),
         onLongPressHint: t('Tiempo objetivo', 'Target time'),
+        // Área táctil de 48 px; la pastilla visible es más baja
         child: InkWell(
-          borderRadius: BorderRadius.circular(Rad.s),
+          borderRadius: BorderRadius.circular(99),
           onTap: () {
             HapticFeedback.selectionClick();
             tm.toggle();
@@ -86,26 +89,32 @@ class _TimerChipState extends State<TimerChip> {
           },
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Sp.s),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                AnimatedContainer(
-                  duration: Mo.of(context, Mo.fast),
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: running ? fg : Colors.transparent,
-                    border: Border.all(color: running ? fg : Pal.faint, width: 1.5),
+            child: Center(
+              widthFactor: 1,
+              child: AnimatedContainer(
+                duration: Mo.of(context, Mo.med),
+                curve: Mo.curve,
+                padding: EdgeInsets.symmetric(horizontal: Sp.m, vertical: widget.big ? Sp.s : 6),
+                decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  AnimatedContainer(
+                    duration: Mo.of(context, Mo.fast),
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: running ? fg : Colors.transparent,
+                      border: Border.all(color: running ? fg : Pal.faint, width: 1.5),
+                    ),
                   ),
-                ),
-                const SizedBox(width: Sp.s),
-                AnimatedDefaultTextStyle(
-                  duration: Mo.of(context, Mo.med),
-                  style: Txt.digits(size, color: fg),
-                  child: Text(tm.label),
-                ),
-              ]),
+                  const SizedBox(width: Sp.s),
+                  AnimatedDefaultTextStyle(
+                    duration: Mo.of(context, Mo.med),
+                    style: Txt.digits(size, color: fg),
+                    child: Text(tm.label),
+                  ),
+                ]),
+              ),
             ),
           ),
         ),

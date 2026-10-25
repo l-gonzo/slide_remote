@@ -5,16 +5,19 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // =====================================================================================
-// Sistema de diseño de Zlide — dirección "Atril"
+// Sistema de diseño de Zlide — dirección "Foco"
 //
-// Zlide se usa de pie, frente a un público, mirando el teléfono de reojo. Por eso:
-//  - Las notas son lo principal: texto grande y muy legible (Atkinson Hyperlegible),
-//    directamente sobre el fondo, sin tarjetas alrededor.
-//  - El naranja es una "luz de cue": solo marca lo que importa ahora (siguiente, número de
-//    diapositiva, cronómetro en marcha, progreso). Todo lo demás es tinta y papel.
-//  - Las superficies se separan con espacio y líneas finas, no con bordes y sombras.
-//  - Los números (diapositiva, tiempo, direcciones) usan una tipografía de ancho fijo o una
-//    condensada grande, para leerse de un vistazo.
+// Zlide se usa de pie, frente a un público, en salas con poca luz, mirando el teléfono de reojo:
+//  - Neutros fríos (grafito con un toque azul): no deslumbran a oscuras y dejan que el contenido
+//    (notas, diapositiva) sea lo más claro de la pantalla.
+//  - Índigo "foco": la marca y la única acción principal de cada pantalla (siguiente, empezar,
+//    lo elegido). Se usa poco para que siempre signifique "esto".
+//  - Contenedores tonales (índigo muy suave) para lo seleccionado; superficies neutras para lo
+//    demás. Sin bordes ni sombras salvo donde aclaran qué se puede tocar.
+//  - Las notas son lo principal: texto grande y muy legible (Atkinson Hyperlegible) sobre el
+//    fondo, sin tarjetas. Los números (diapositiva, tiempo) en tipografías de un vistazo.
+//  - Grupos como en iOS (listas redondeadas con divisores interiores) y controles con
+//    estados claros como en Material 3. Áreas táctiles de 48 px o más.
 // =====================================================================================
 
 /// Colores de un tema (claro u oscuro).
@@ -30,6 +33,9 @@ class Palette {
     required this.mute,
     required this.accent,
     required this.onAccent,
+    required this.accentSoft,
+    required this.onAccentSoft,
+    required this.thumb,
     required this.ok,
     required this.busy,
     required this.error,
@@ -53,42 +59,56 @@ class Palette {
   /// Texto principal y texto secundario.
   final Color ink, mute;
 
-  /// Naranja de presentación y el texto que va encima.
+  /// Índigo de la marca (acción principal) y el texto que va encima.
   final Color accent, onAccent;
+
+  /// Contenedor tonal: lo elegido, lo activo (índigo muy suave) y su texto.
+  final Color accentSoft, onAccentSoft;
+
+  /// Pastilla de lo elegido en un selector segmentado (como en iOS).
+  final Color thumb;
 
   /// Estados.
   final Color ok, busy, error;
 
+  // Contrastes (WCAG): texto ≥ 16:1, secundario ≥ 5.5:1, acento sobre fondo ≥ 5.8:1,
+  // texto sobre el acento ≥ 6.3:1, estados ≥ 4.5:1.
   static const darkPalette = Palette(
     dark: true,
-    bg: Color(0xFF14100E),
-    raise: Color(0xFF211A17),
-    raiseHi: Color(0xFF2C2420),
-    rule: Color(0xFF2E2622),
-    faint: Color(0xFF4F443D),
-    ink: Color(0xFFF4ECE4),
-    mute: Color(0xFFA39488),
-    accent: Color(0xFFF26522),
-    onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF3FD48A),
-    busy: Color(0xFFFFC24B),
-    error: Color(0xFFFF6A6A),
+    bg: Color(0xFF0B0D12),
+    raise: Color(0xFF151821),
+    raiseHi: Color(0xFF1E222D),
+    rule: Color(0xFF262A36),
+    faint: Color(0xFF474D5E),
+    ink: Color(0xFFECEEF4),
+    mute: Color(0xFF969CAE),
+    accent: Color(0xFF8F8EFF),
+    onAccent: Color(0xFF0E0D33),
+    accentSoft: Color(0xFF25244F),
+    onAccentSoft: Color(0xFFDCDBFF),
+    thumb: Color(0xFF343949),
+    ok: Color(0xFF4ADE80),
+    busy: Color(0xFFFBBF24),
+    error: Color(0xFFFF6B6B),
   );
 
   static const lightPalette = Palette(
     dark: false,
-    bg: Color(0xFFFBF6F0),
-    raise: Color(0xFFF2E9DF),
-    raiseHi: Color(0xFFEADFD3),
-    rule: Color(0xFFE7DBCE),
-    faint: Color(0xFFC9B8A9),
-    ink: Color(0xFF24170F),
-    mute: Color(0xFF75614F),
-    accent: Color(0xFFC9430C),
+    bg: Color(0xFFF3F4F8),
+    raise: Color(0xFFFFFFFF),
+    raiseHi: Color(0xFFE9EBF1),
+    rule: Color(0xFFE2E5EC),
+    faint: Color(0xFFB9BECB),
+    ink: Color(0xFF11131A),
+    mute: Color(0xFF5C6273),
+    accent: Color(0xFF4D47E0),
     onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF14874F),
-    busy: Color(0xFFA66A00),
-    error: Color(0xFFC62A3A),
+    accentSoft: Color(0xFFE4E3FF),
+    onAccentSoft: Color(0xFF1F1A7A),
+    thumb: Color(0xFFFFFFFF),
+    ok: Color(0xFF0F7F44),
+    busy: Color(0xFFB25E09),
+    error: Color(0xFFD3263A),
   );
 }
 
@@ -106,6 +126,9 @@ abstract final class Pal {
   static Color get ink => p.ink;
   static Color get accent => p.accent;
   static Color get onAccent => p.onAccent;
+  static Color get accentSoft => p.accentSoft;
+  static Color get onAccentSoft => p.onAccentSoft;
+  static Color get thumb => p.thumb;
   static Color get ok => p.ok;
   static Color get busy => p.busy;
   static Color get error => p.error;
@@ -303,9 +326,11 @@ ThemeData buildTheme() {
     onPrimary: p.onAccent,
     secondary: p.accent,
     onSecondary: p.onAccent,
-    // Botones tonales y chips elegidos: superficie del tema, no el verde azulado por defecto
-    secondaryContainer: p.raiseHi,
-    onSecondaryContainer: p.ink,
+    primaryContainer: p.accentSoft,
+    onPrimaryContainer: p.onAccentSoft,
+    // Botones tonales y chips elegidos: índigo suave de la marca (no el verde azulado por defecto)
+    secondaryContainer: p.accentSoft,
+    onSecondaryContainer: p.onAccentSoft,
     surface: p.bg,
     onSurface: p.ink,
     surfaceContainerLowest: p.bg,
@@ -376,9 +401,8 @@ ThemeData buildTheme() {
         shape: buttonShape,
       ),
     ),
-    iconButtonTheme: IconButtonThemeData(
-      style: IconButton.styleFrom(foregroundColor: p.mute, minimumSize: const Size(48, 48)),
-    ),
+    // Sin color fijo: los normales usan onSurfaceVariant (tenue) y los rellenos/tonales el suyo
+    iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size(48, 48))),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.onAccent : p.mute),
       trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.accent : p.raiseHi),
@@ -488,7 +512,7 @@ class Dot extends StatelessWidget {
       );
 }
 
-/// Botón de acción. [primary]: naranja; si no, superficie elevada.
+/// Botón de acción. [primary]: índigo (la acción principal); si no, superficie neutra.
 class PillButton extends StatelessWidget {
   const PillButton(this.label, {super.key, required this.onTap, this.primary = false, this.icon, this.dense = false});
   final String label;
@@ -504,7 +528,8 @@ class PillButton extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.5,
       child: Material(
-        color: primary ? Pal.accent : Pal.raise,
+        // raiseHi y no raise: se distingue tanto sobre el fondo como dentro de un grupo
+        color: primary ? Pal.accent : Pal.raiseHi,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m)),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -537,8 +562,9 @@ class PillButton extends StatelessWidget {
   }
 }
 
-/// Selector de opciones en una pista. [accent]: la opción elegida va en naranja (ajustes);
-/// si no, en el color del fondo (cambio de modo, más discreto).
+/// Selector de opciones en una pista, como el control segmentado de iOS: la opción elegida es
+/// una pastilla que se desliza. [accent]: la pastilla va en índigo suave (ajustes que cambian
+/// algo de la presentación); si no, neutra.
 class Segmented<T> extends StatelessWidget {
   const Segmented({
     super.key,
@@ -555,49 +581,68 @@ class Segmented<T> extends StatelessWidget {
   final bool accent;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(Sp.xs),
-        decoration: BoxDecoration(color: Pal.raise, borderRadius: BorderRadius.circular(Rad.m)),
-        child: Row(children: [
-          for (var i = 0; i < values.length; i++)
-            Expanded(
-              child: Semantics(
-                button: true,
-                selected: values[i] == selected,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (values[i] != selected) HapticFeedback.selectionClick();
-                    onChanged(values[i]);
-                  },
-                  child: AnimatedContainer(
-                    duration: Mo.of(context, Mo.fast),
-                    curve: Mo.curve,
-                    constraints: const BoxConstraints(minHeight: 42),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(vertical: Sp.s, horizontal: Sp.xs),
-                    decoration: BoxDecoration(
-                      color: values[i] == selected ? (accent ? Pal.accent : Pal.bg) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(Rad.m - Sp.xs),
-                    ),
-                    child: Text(
-                      labels[i],
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Txt.text(
-                        14,
-                        weight: FontWeight.w600,
-                        height: 1.2,
-                        color: values[i] == selected ? (accent ? Pal.onAccent : Pal.ink) : Pal.muted,
+  Widget build(BuildContext context) {
+    final index = values.indexOf(selected);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: Pal.raiseHi, borderRadius: BorderRadius.circular(Rad.m)),
+      child: LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth / values.length;
+        return Stack(children: [
+          // Pastilla de la opción elegida: se desliza al cambiar
+          if (index >= 0)
+            AnimatedPositioned(
+              duration: Mo.of(context, Mo.med),
+              curve: Curves.easeOutBack,
+              left: w * index,
+              top: 0,
+              bottom: 0,
+              width: w,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: accent ? Pal.accentSoft : Pal.thumb,
+                  borderRadius: BorderRadius.circular(Rad.m - 3),
+                  boxShadow: Pal.p.dark || accent
+                      ? null
+                      : [BoxShadow(color: Pal.ink.withValues(alpha: 0.10), blurRadius: 6, offset: const Offset(0, 1))],
+                ),
+              ),
+            ),
+          Row(children: [
+            for (var i = 0; i < values.length; i++)
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  selected: i == index,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (i != index) HapticFeedback.selectionClick();
+                      onChanged(values[i]);
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: Sp.s, horizontal: Sp.xs),
+                      child: AnimatedDefaultTextStyle(
+                        duration: Mo.of(context, Mo.fast),
+                        style: Txt.text(
+                          14,
+                          weight: i == index ? FontWeight.w700 : FontWeight.w600,
+                          height: 1.2,
+                          color: i == index ? (accent ? Pal.onAccentSoft : Pal.ink) : Pal.muted,
+                        ),
+                        child: Text(labels[i], textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ]),
-      );
+          ]),
+        ]);
+      }),
+    );
+  }
 }
 
 /// Grupo de filas (ajustes, listas): un rótulo y una superficie redondeada con líneas entre filas.

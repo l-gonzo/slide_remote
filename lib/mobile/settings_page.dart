@@ -7,7 +7,7 @@ import 'stage_widgets.dart';
 import 'timer_chip.dart';
 
 /// Versión que se muestra en "Acerca de" (la misma de pubspec.yaml).
-const kAppVersion = '2.3.0';
+const kAppVersion = '2.4.0';
 
 /// Ajustes: una pantalla completa con grupos, de lo que más se usa al presentar a lo menos.
 class SettingsPage extends StatelessWidget {
@@ -136,7 +136,7 @@ class SettingsPage extends StatelessWidget {
           ),
           SwitchRow(
             icon: Icons.keyboard_alt_outlined,
-            title: t('Usar flechas ← →', 'Use arrow keys ← →'),
+            title: t('Usar teclas de flecha', 'Use arrow keys'),
             subtitle: t('Si tu programa no responde a AvPág/RePág.', 'If your app ignores Page Down/Page Up.'),
             value: c.arrows,
             onChanged: c.setArrows,

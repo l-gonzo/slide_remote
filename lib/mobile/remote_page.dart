@@ -223,14 +223,13 @@ class _RemotePageState extends State<RemotePage> {
     required bool short,
     required double height,
   }) {
+    // Siempre "anterior" y "siguiente" lado a lado, con "siguiente" del lado de la mano: el pulgar
+    // los encuentra en el mismo lugar con o sin notas. Sin notas hay más espacio y crecen un poco.
+    const vertical = false;
     final double padsHeight;
-    final bool vertical;
     if (view == _View.ready) {
-      // Sin notas: botones grandes, uno sobre otro
-      vertical = true;
-      padsHeight = (height * (c.oneHand ? 0.4 : 0.36)).clamp(tight ? 140.0 : 180.0, 320.0);
+      padsHeight = (height * (c.oneHand ? 0.24 : 0.2)).clamp(tight ? 88.0 : 116.0, 176.0);
     } else {
-      vertical = false;
       padsHeight = c.oneHand ? (tight ? 80.0 : 116.0) : (expanded || tight ? 64.0 : (short ? 88.0 : 100.0));
     }
     return Column(
@@ -312,75 +311,86 @@ class _RemotePageState extends State<RemotePage> {
 
   Widget _topBar() {
     final s = c.status;
+    final dnd = c.dndState == DndState.on;
     return IgnorePointer(
       ignoring: c.locked,
       child: AnimatedOpacity(
         duration: Mo.of(context, Mo.med),
         opacity: c.locked ? 0.5 : 1,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Sp.s, Sp.xs, Sp.xs, 0),
+          padding: const EdgeInsets.fromLTRB(Sp.m, Sp.s, Sp.xs, Sp.xs),
           child: Row(
             children: [
+              // Pastilla de conexión: estado, modo y dispositivo. Al tocarla, la hoja de conexión.
+              // Ocupa lo que necesita, hasta todo el ancho que dejan el cronómetro y Ajustes.
               Expanded(
-                child: Semantics(
-                  button: true,
-                  label: t('Conexión', 'Connection'),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(Rad.m),
-                    onTap: _openConnection,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 52),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.xs),
-                        child: Row(
-                          children: [
-                            Dot(connColor(s.conn)),
-                            const SizedBox(width: Sp.m),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    s.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Txt.text(15, weight: FontWeight.w700, height: 1.2),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Semantics(
+                    button: true,
+                    label: t('Conexión', 'Connection'),
+                    child: Material(
+                      color: Pal.raise,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.l)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: _openConnection,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 50),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(Sp.m + 2, Sp.xs + 2, Sp.s + 2, Sp.xs + 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Dot(connColor(s.conn)),
+                                const SizedBox(width: Sp.m),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        s.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Txt.text(14.5, weight: FontWeight.w700, height: 1.2),
+                                      ),
+                                      Text(
+                                        [
+                                          modeName(c.mode),
+                                          if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!,
+                                        ].join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Txt.text(12, color: Pal.muted, height: 1.25),
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    [
-                                      modeName(c.mode),
-                                      if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!,
-                                    ].join(' · '),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Txt.text(12.5, color: Pal.muted, height: 1.25),
+                                ),
+                                if (dnd) ...[
+                                  const SizedBox(width: Sp.s),
+                                  Tooltip(
+                                    message: t('No molestar activo', 'Do not disturb is on'),
+                                    child: Icon(Icons.do_not_disturb_on_rounded, size: 16, color: Pal.muted),
                                   ),
                                 ],
-                              ),
+                                const SizedBox(width: Sp.xs),
+                                Icon(Icons.unfold_more_rounded, size: 18, color: Pal.muted),
+                              ],
                             ),
-                            const SizedBox(width: Sp.xs),
-                            Icon(Icons.expand_more_rounded, size: 18, color: Pal.muted),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-              if (c.dndState == DndState.on)
-                Tooltip(
-                  message: t('No molestar activo', 'Do not disturb is on'),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Sp.xs),
-                    child: Icon(Icons.do_not_disturb_on_outlined, size: 18, color: Pal.muted),
-                  ),
-                ),
+              const SizedBox(width: Sp.s),
               TimerChip(c.timer),
               if (!c.oneHand)
                 IconButton(
                   onPressed: _openSettings,
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: const Icon(Icons.tune_rounded),
                   tooltip: t('Ajustes', 'Settings'),
                 ),
             ],
@@ -503,11 +513,11 @@ class _RemotePageState extends State<RemotePage> {
           ),
           const SizedBox(height: Sp.l),
           Wrap(
-            spacing: Sp.s,
+            spacing: Sp.l,
             runSpacing: Sp.s,
             children: [_keyHint(fwd, t('siguiente', 'next')), _keyHint(back, t('anterior', 'previous'))],
           ),
-          const SizedBox(height: Sp.l),
+          const SizedBox(height: Sp.xl),
           IgnorePointer(ignoring: c.locked, child: _addNotesLink()),
         ],
       ),
@@ -521,26 +531,23 @@ class _RemotePageState extends State<RemotePage> {
     return null;
   }
 
-  Widget _keyHint(String key, String what) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.s),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(Rad.s),
-      border: Border.all(color: Pal.faint, width: 1.5),
-    ),
-    child: Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: key,
-            style: Txt.digits(13, color: Pal.accent),
-          ),
-          TextSpan(
-            text: '  $what',
-            style: Txt.text(14, weight: FontWeight.w600, height: 1.2),
-          ),
-        ],
+  /// "[VOL +] siguiente": la tecla como una tecla física, y lo que hace.
+  Widget _keyHint(String key, String what) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 5),
+        decoration: BoxDecoration(
+          color: Pal.raiseHi,
+          borderRadius: BorderRadius.circular(Rad.s - 2),
+          border: Border(bottom: BorderSide(color: Pal.faint.withValues(alpha: 0.6), width: 2)),
+        ),
+        child: Text(key, style: Txt.digits(13, color: Pal.ink)),
       ),
-    ),
+      const SizedBox(width: Sp.s),
+      Text(what, style: Txt.text(14.5, weight: FontWeight.w600, height: 1.2)),
+      const SizedBox(width: Sp.s),
+    ],
   );
 
   Widget _addNotesLink() {
@@ -557,28 +564,55 @@ class _RemotePageState extends State<RemotePage> {
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextButton.icon(
-          onPressed: c.pickNotes,
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Sp.s)),
-          icon: const Icon(Icons.add_rounded, size: 20),
-          label: Text(t('Agregar notas del presentador', 'Add speaker notes')),
-        ),
-        if (c.mode == Mode.wifi)
-          Padding(
-            padding: const EdgeInsets.only(left: Sp.s),
-            child: Text(
-              t(
-                'O elige la presentación en la app de la PC: las notas llegan solas.',
-                'Or choose the presentation in the desktop app: the notes arrive by themselves.',
+    // Estado vacío que orienta: qué ganas con las notas y cómo agregarlas
+    return Material(
+      color: Pal.raise,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.l)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: c.pickNotes,
+        child: Padding(
+          padding: const EdgeInsets.all(Sp.l),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: Pal.accentSoft, borderRadius: BorderRadius.circular(Rad.m - 2)),
+                child: Icon(Icons.sticky_note_2_outlined, color: Pal.onAccentSoft),
               ),
-              style: Txt.text(13, color: Pal.muted, height: 1.35),
-            ),
+              const SizedBox(width: Sp.m + 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t('Agrega tus notas', 'Add your notes'), style: Txt.text(16, weight: FontWeight.w700, height: 1.25)),
+                    const SizedBox(height: 3),
+                    Text(
+                      c.mode == Mode.wifi
+                          ? t(
+                              'Elige el .pptx aquí, o la presentación en la app de la PC: las notas llegan solas.',
+                              'Pick the .pptx here, or the presentation in the desktop app: the notes arrive by themselves.',
+                            )
+                          : t(
+                              'Elige el .pptx y verás aquí, en grande, lo que vas a decir en cada diapositiva.',
+                              'Pick the .pptx and you’ll see here, large, what to say on each slide.',
+                            ),
+                      style: Txt.text(13.5, color: Pal.muted, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: Sp.s),
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Icon(Icons.add_rounded, color: Pal.accent),
+              ),
+            ],
           ),
-      ],
+        ),
+      ),
     );
   }
 
@@ -594,15 +628,17 @@ class _RemotePageState extends State<RemotePage> {
     final slideKey = ValueKey('${c.slide}-${c.deckName}');
     final fx = c.animProgress;
     final steps = fx != null
-        ? Container(
-            padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 3),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(99),
-              border: Border.all(color: Pal.faint, width: 1.5),
-            ),
-            child: Text(
-              '${t('animación', 'animation')} ${fx.step}/${fx.total}',
-              style: Txt.text(12, weight: FontWeight.w600, color: Pal.muted, height: 1.2),
+        ? Semantics(
+            label: t('Animación ${fx.step} de ${fx.total}', 'Animation ${fx.step} of ${fx.total}'),
+            excludeSemantics: true,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 4),
+              decoration: BoxDecoration(color: Pal.accentSoft, borderRadius: BorderRadius.circular(99)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.auto_awesome_motion_rounded, size: 14, color: Pal.onAccentSoft),
+                const SizedBox(width: 5),
+                Text('${fx.step}/${fx.total}', style: Txt.digits(12.5, color: Pal.onAccentSoft)),
+              ]),
             ),
           )
         : null;
@@ -715,9 +751,14 @@ class _RemotePageState extends State<RemotePage> {
       child: Text.rich(
         TextSpan(
           children: [
-            TextSpan(
-              text: '${t('Sigue', 'Next')}  →  ',
-              style: Txt.text(14, color: Pal.muted),
+            TextSpan(text: t('Sigue', 'Next'), style: Txt.text(14, color: Pal.muted)),
+            // Ícono y no el carácter "→": así se ve igual con cualquier tipografía
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Sp.s),
+                child: Icon(Icons.arrow_forward_rounded, size: 15, color: Pal.muted),
+              ),
             ),
             TextSpan(
               text: title,
@@ -852,7 +893,7 @@ class _RemotePageState extends State<RemotePage> {
               // Sin transmitir el teléfono cuenta las pulsaciones: aquí se corrige si se desfasó
               if (d != null && !c.slideIsExact)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(Sp.page, Sp.xs, Sp.s, Sp.s),
+                  padding: const EdgeInsets.fromLTRB(Sp.page, Sp.xs, Sp.page, Sp.m),
                   child: Row(
                     children: [
                       Expanded(
@@ -872,6 +913,7 @@ class _RemotePageState extends State<RemotePage> {
                         tooltip: t('Diapositiva anterior en las notas', 'Previous slide in the notes'),
                         icon: const Icon(Icons.remove_rounded),
                       ),
+                      const SizedBox(width: Sp.s),
                       IconButton.filledTonal(
                         onPressed: () {
                           Navigator.pop(ctx);

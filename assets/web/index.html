@@ -6,8 +6,10 @@
 <title>Zlide</title>
 <style>
   :root {
-    --bg: #000; --panel: rgba(31, 26, 24, .88); --stroke: #3b322e;
-    --text: #f7f1ed; --muted: #b4a69e; --accent: #f26522; --ok: #3fd48a; --busy: #ffc24b; --off: #6f635c;
+    /* Identidad "Foco" (la misma de las apps): grafito frío e índigo. El escenario sigue negro. */
+    --bg: #000; --panel: rgba(21, 24, 33, .9); --stroke: #2a2f3d;
+    --text: #eceef4; --muted: #969cae; --accent: #5b55f0; --accent-hi: #8f8eff;
+    --ok: #4ade80; --busy: #fbbf24; --off: #474d5e;
   }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; overflow: hidden; }
@@ -23,31 +25,31 @@
   /* Enlaces y videos de la diapositiva: encima de la imagen, debajo de los dibujos */
   #ov { position: absolute; left: 0; top: 0; pointer-events: none; }
   #ov a { position: absolute; pointer-events: auto; cursor: pointer; border-radius: 4px; }
-  #ov a:hover { background: rgba(242, 101, 34, .14); outline: 2px solid rgba(242, 101, 34, .55); }
+  #ov a:hover { background: rgba(143, 142, 255, .16); outline: 2px solid rgba(143, 142, 255, .7); }
   #ov .media { position: absolute; pointer-events: auto; cursor: pointer; }
   #ov .media video { width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
   #ov .media.playing video { display: block; }
   #ov .media .play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px;
     border-radius: 50%; background: rgba(0, 0, 0, .55); display: grid; place-items: center;
     box-shadow: 0 6px 24px rgba(0, 0, 0, .35); transition: transform .15s, background .15s; }
-  #ov .media:hover .play { transform: scale(1.08); background: rgba(242, 101, 34, .9); }
+  #ov .media:hover .play { transform: scale(1.08); background: rgba(91, 85, 240, .92); }
   #ov .media .play::after { content: ''; margin-left: 6px; border-style: solid; border-width: 13px 0 13px 21px;
     border-color: transparent transparent transparent #fff; }
   #ov .media.audio .play::after { margin-left: 0; border: 0; width: 22px; height: 22px; border-radius: 3px;
     background: #fff; clip-path: polygon(0 30%, 35% 30%, 75% 0, 75% 100%, 35% 70%, 0 70%); }
   #ov .media.playing .play { display: none; }
-  #ov .media.audio.playing .play { display: grid; background: rgba(242, 101, 34, .9); }
+  #ov .media.audio.playing .play { display: grid; background: rgba(91, 85, 240, .92); }
   #open { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, .55); backdrop-filter: blur(6px); z-index: 5; }
   #open.show { display: flex; }
-  #open .card { background: #1c1714; border: 1px solid var(--stroke); border-radius: 22px; padding: 24px 28px;
+  #open .card { background: #151821; border: 1px solid var(--stroke); border-radius: 22px; padding: 24px 28px;
     max-width: min(560px, 90vw); text-align: center; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
   #open .url { color: var(--muted); font-size: 14px; word-break: break-all; margin: 8px 0 18px; }
   #open button { font: inherit; border: 0; border-radius: 999px; padding: 10px 20px; font-weight: 700; cursor: pointer; }
   #openGo { background: var(--accent); color: #fff; }
   /* Enlace abierto dentro de la presentación (se cierra desde el teléfono, con ✕ o Esc) */
   #linkView { position: fixed; inset: 0; z-index: 6; display: none; flex-direction: column; padding: 18px;
-    gap: 10px; background: rgba(8, 6, 5, .72); backdrop-filter: blur(10px); }
+    gap: 10px; background: rgba(6, 7, 11, .74); backdrop-filter: blur(10px); }
   #linkView.show { display: flex; animation: linkIn .22s ease-out; }
   @keyframes linkIn { from { opacity: 0; transform: scale(.985); } }
   #linkBar { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 6px 0 16px;
@@ -64,11 +66,12 @@
   #laser { position: absolute; left: 0; top: 0; display: none; border-radius: 50%; pointer-events: none;
     will-change: transform; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
-    justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #141110; }
+    justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0b0d12; }
   #empty.show { display: flex; }
   #empty h1 { margin: 0; font-size: clamp(28px, 5vw, 56px); font-weight: 800; letter-spacing: -.02em; }
   #empty p { margin: 0; color: var(--muted); font-size: clamp(15px, 2vw, 20px); max-width: 32em; line-height: 1.45; }
-  #empty .mark { width: 72px; height: 72px; border-radius: 20px; background: var(--accent); color: #fff;
+  #empty .mark { width: 72px; height: 72px; border-radius: 20px; color: #fff;
+    background: radial-gradient(circle at 50% 8%, rgba(255,255,255,.34), transparent 75%), linear-gradient(135deg, #6a63ff, #3b34c8);
     display: grid; place-items: center; font-size: 40px; font-weight: 900; }
   #hud { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 12px; align-items: center;
     font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--stroke);

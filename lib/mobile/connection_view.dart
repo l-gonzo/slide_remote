@@ -80,7 +80,7 @@ class ModePicker extends StatelessWidget {
       child: AnimatedContainer(
         duration: Mo.of(context, Mo.fast),
         decoration: BoxDecoration(
-          color: on ? Pal.accent.withValues(alpha: Pal.p.dark ? 0.14 : 0.08) : Pal.raise,
+          color: on ? Pal.accentSoft : Pal.raise,
           borderRadius: BorderRadius.circular(Rad.l),
           border: Border.all(color: on ? Pal.accent : Colors.transparent, width: 1.5),
         ),
@@ -640,10 +640,10 @@ class PresentOnPc extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: onTap != null ? Pal.accent.withValues(alpha: 0.14) : Pal.raiseHi,
+                color: onTap != null ? Pal.accentSoft : Pal.raiseHi,
                 borderRadius: BorderRadius.circular(Rad.s + 2),
               ),
-              child: Icon(icon, size: 21, color: onTap != null ? Pal.accent : Pal.ink),
+              child: Icon(icon, size: 21, color: onTap != null ? Pal.onAccentSoft : Pal.ink),
             ),
             const SizedBox(width: Sp.m + 2),
             Expanded(

@@ -35,7 +35,7 @@ class LinkPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Pal.raise,
         borderRadius: BorderRadius.circular(Rad.m),
-        border: Border.all(color: Pal.accent.withValues(alpha: 0.55), width: 1.5),
+        border: Border.all(color: Pal.accent, width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(Sp.m),

@@ -22,7 +22,7 @@ class StageAction {
   final String label;
   final VoidCallback? onTap;
 
-  /// Encendida (p. ej. notas expandidas): se marca con el color de acento.
+  /// Encendida (p. ej. notas expandidas): va en el contenedor tonal de la marca.
   final bool active;
   final String? tooltip;
 }
@@ -62,7 +62,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = a.onTap != null;
-    final fg = !enabled ? Pal.faint : (a.active ? Pal.accent : Pal.ink);
+    final fg = !enabled ? Pal.faint : (a.active ? Pal.onAccentSoft : Pal.ink);
     return Semantics(
       button: true,
       selected: a.active,
@@ -71,7 +71,7 @@ class _ActionButton extends StatelessWidget {
       child: Tooltip(
         message: a.tooltip ?? a.label,
         child: Material(
-          color: a.active ? Pal.accent.withValues(alpha: 0.12) : Colors.transparent,
+          color: a.active ? Pal.accentSoft : Colors.transparent,
           borderRadius: BorderRadius.circular(Rad.l - Sp.xs),
           child: InkWell(
             borderRadius: BorderRadius.circular(Rad.l - Sp.xs),
@@ -488,11 +488,12 @@ class SettingRow extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               if (icon != null) ...[
+                // Mosaico tonal de la marca, como los íconos de Ajustes en iOS
                 Container(
                   width: 36,
                   height: 36,
-                  decoration: BoxDecoration(color: Pal.raiseHi, borderRadius: BorderRadius.circular(Rad.s)),
-                  child: Icon(icon, size: 19, color: Pal.ink),
+                  decoration: BoxDecoration(color: Pal.accentSoft, borderRadius: BorderRadius.circular(Rad.s)),
+                  child: Icon(icon, size: 19, color: Pal.onAccentSoft),
                 ),
                 const SizedBox(width: Sp.m + 2),
               ],

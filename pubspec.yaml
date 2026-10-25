@@ -1,7 +1,7 @@
 name: slide_remote
 description: Zlide — cambia las diapositivas con los botones de volumen del teléfono.
 publish_to: none
-version: 2.3.0+5
+version: 2.4.0+6
 
 environment:
   sdk: ^3.8.0
@@ -68,8 +68,9 @@ flutter:
 flutter_launcher_icons:
   image_path: assets/icon/icon.png
   android: true
-  adaptive_icon_background: "#E45209"
+  adaptive_icon_background: assets/icon/icon_background.png
   adaptive_icon_foreground: assets/icon/icon_foreground.png
+  adaptive_icon_foreground_inset: 0
   ios: true
   image_path_ios: assets/icon/icon_ios.png
   remove_alpha_ios: true
