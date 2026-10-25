@@ -3,10 +3,12 @@ package dev.lgonzo.slide_native;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.net.wifi.WifiManager;
@@ -17,6 +19,7 @@ import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.Window;
 
@@ -40,6 +43,7 @@ import io.flutter.plugin.common.PluginRegistry;
  *  - captura de los botones de volumen (envolviendo el Window.Callback de la Activity)
  *  - teclado Bluetooth HID (BtHidKeyboard)
  *  - permisos de Bluetooth y "hacer visible"
+ *  - "No molestar" mientras se presenta
  *
  * Canal de métodos: "slide_native". Canal de eventos: "slide_native/events".
  */
@@ -203,6 +207,27 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 result.success(null);
                 return;
             }
+            case "dndStatus":
+                result.success(dndStatus());
+                return;
+            case "setDnd": {
+                Boolean on = call.argument("enabled");
+                result.success(setDnd(on != null && on));
+                return;
+            }
+            case "openDndSettings": {
+                boolean ok = false;
+                if (activity != null && Build.VERSION.SDK_INT >= 23) {
+                    try {
+                        activity.startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                        ok = true;
+                    } catch (RuntimeException e) {
+                        android.util.Log.w("slide_native", "openDndSettings: " + e);
+                    }
+                }
+                result.success(ok);
+                return;
+            }
             case "hidSupported":
                 result.success(Build.VERSION.SDK_INT >= 28 && BluetoothAdapter.getDefaultAdapter() != null);
                 return;
@@ -231,7 +256,9 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                     result.error("BAD_ARGS", Lang.t("Faltan datos para convertir", "Missing conversion data"), null);
                     return;
                 }
+                String svg = call.argument("svgOutput");
                 PptxConverter.convert(activity, new java.io.File(in), new java.io.File(out),
+                        svg != null ? new java.io.File(svg) : null,
                         error -> main.post(() -> {
                             if (error == null) result.success(null);
                             else result.error("CONVERT_FAILED", error, null);
@@ -376,6 +403,56 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
             }
         } else {
             v.vibrate(pattern, -1);
+        }
+    }
+
+    // ================================================================ No molestar
+
+    private static final String DND_PREFS = "zlide_native";
+    private static final String DND_PREV = "dnd_prev"; // filtro que había antes de presentar
+
+    private NotificationManager notifications() {
+        return appContext == null ? null : (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
+    /** "granted", "denied" (falta el acceso a No molestar) o "unsupported". */
+    private String dndStatus() {
+        NotificationManager nm = notifications();
+        if (nm == null || Build.VERSION.SDK_INT < 23) return "unsupported";
+        return nm.isNotificationPolicyAccessGranted() ? "granted" : "denied";
+    }
+
+    /**
+     * Activar: solo pasan las alarmas (los avisos del cronómetro vibran como alarma). Se guarda
+     * el modo anterior, también en disco: si la app se cierra de golpe, se restaura al volver.
+     * Desactivar: se regresa al modo anterior, salvo que el usuario lo haya cambiado mientras tanto.
+     * Devuelve "on", "off" o el estado de [dndStatus] si no se pudo.
+     */
+    private String setDnd(boolean on) {
+        String st = dndStatus();
+        if (!"granted".equals(st)) return st;
+        NotificationManager nm = notifications();
+        SharedPreferences prefs = appContext.getSharedPreferences(DND_PREFS, Context.MODE_PRIVATE);
+        try {
+            int current = nm.getCurrentInterruptionFilter();
+            if (on) {
+                if (!prefs.contains(DND_PREV)) prefs.edit().putInt(DND_PREV, current).apply();
+                if (current != NotificationManager.INTERRUPTION_FILTER_ALARMS) {
+                    nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS);
+                }
+                return "on";
+            }
+            if (prefs.contains(DND_PREV)) {
+                int prev = prefs.getInt(DND_PREV, NotificationManager.INTERRUPTION_FILTER_ALL);
+                prefs.edit().remove(DND_PREV).apply();
+                if (current == NotificationManager.INTERRUPTION_FILTER_ALARMS && prev != current) {
+                    nm.setInterruptionFilter(prev);
+                }
+            }
+            return "off";
+        } catch (RuntimeException e) {
+            android.util.Log.w("slide_native", "setDnd: " + e);
+            return "denied";
         }
     }
 

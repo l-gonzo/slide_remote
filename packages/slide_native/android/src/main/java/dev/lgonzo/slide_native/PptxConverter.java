@@ -73,10 +73,13 @@ final class PptxConverter {
     }
 
     /**
-     * Convierte [input] a PDF en [output]. [callback] se llama en el hilo de LibreOffice;
-     * quien lo use debe regresar al hilo principal.
+     * Convierte [input] a PDF en [output] y, si [svgOutput] no es null, también a SVG con el
+     * reproductor de LibreOffice (animaciones y transiciones en el navegador). Si el SVG falla
+     * se omite sin error. [callback] se llama en el hilo de LibreOffice; quien lo use debe
+     * regresar al hilo principal.
      */
-    static void convert(final Activity activity, final File input, final File output, final Callback callback) {
+    static void convert(final Activity activity, final File input, final File output, final File svgOutput,
+            final Callback callback) {
         if (!isAvailable()) {
             callback.done(Lang.t("LibreOffice no está disponible: ", "LibreOffice is not available: ") + unavailableReason);
             return;
@@ -121,6 +124,18 @@ final class PptxConverter {
                 }
                 copy(tmpOut, output);
                 tmpOut.delete();
+                if (svgOutput != null) {
+                    File tmpSvg = new File(dir, "salida.svg");
+                    try {
+                        if (tmpSvg.exists()) tmpSvg.delete();
+                        doc.saveAs("file://" + tmpSvg.getAbsolutePath(), "svg", "");
+                        if (tmpSvg.exists() && tmpSvg.length() > 0) copy(tmpSvg, svgOutput);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "Sin SVG (animaciones)", t); // queda solo el PDF
+                    } finally {
+                        tmpSvg.delete();
+                    }
+                }
                 callback.done(null);
             } catch (Throwable t) {
                 Log.e(TAG, "Conversión fallida", t);

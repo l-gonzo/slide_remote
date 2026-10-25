@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../common/deck_media.dart';
 import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
@@ -21,6 +22,12 @@ import 'talk_timer.dart';
 import 'wifi_client.dart';
 
 enum Mode { bluetooth, wifi, browser }
+
+/// Mano con la que se sostiene el teléfono: los controles se acomodan de ese lado.
+enum Hand { right, left }
+
+/// "No molestar" al presentar: activo, falta el permiso, o el sistema no lo permite (iOS).
+enum DndState { off, on, needsAccess, unsupported }
 
 /// Estado del modo Bluetooth (Android = teclado HID, iOS = BLE hacia la app de escritorio).
 enum BtState { unknown, unavailable, off, noPermission, idle, connecting, connected, waiting }
@@ -69,6 +76,29 @@ class RemoteController extends ChangeNotifier {
   Mode mode = Mode.bluetooth;
   bool invert = false;
   bool arrows = false;
+
+  // ---- al presentar
+  /// Mano dominante: los botones y acciones se acomodan de ese lado.
+  Hand hand = Hand.right;
+
+  /// Modo una mano: todo lo que se toca queda en la parte de abajo, al alcance del pulgar.
+  bool oneHand = false;
+
+  /// Ignorar un segundo toque muy seguido en los botones de la pantalla (toques accidentales).
+  bool tapGuard = true;
+
+  /// Activar "No molestar" del teléfono mientras se presenta.
+  bool dnd = true;
+  DndState dndState = DndState.off;
+
+  /// Tamaño del texto de las notas.
+  double notesFont = 22;
+
+  /// Pantalla bloqueada: los toques no hacen nada (solo los botones de volumen). Evita cambios
+  /// de diapositiva o gestos del sistema accidentales con el teléfono en la mano o el bolsillo.
+  bool locked = false;
+
+  DateTime _lastTap = DateTime.fromMillisecondsSinceEpoch(0);
 
   // ---- Bluetooth
   BtState btState = BtState.unknown;
@@ -132,12 +162,29 @@ class RemoteController extends ChangeNotifier {
   SlideInfo? get currentSlide => (deck == null || deck!.isEmpty) ? null : deck![slide];
   SlideInfo? get nextSlide => (deck == null || slide + 1 >= deck!.length) ? null : deck![slide + 1];
 
+  /// Contador de animaciones de la diapositiva ("animación 2/5"), o null si no aplica.
+  /// Transmitiendo, lo informa el reproductor que proyecta (sin animaciones, como un PDF, no se
+  /// muestra); con teclas se cuentan los clics según el archivo.
+  ({int step, int total})? get animProgress {
+    if (slideIsExact) {
+      final (step, steps) = switch (mode) {
+        Mode.browser when browser.hasAnim && browser.fxPage == browser.page => (browser.fxStep, browser.fxSteps),
+        Mode.wifi when pcPresenting => (_shownStep, _shownSteps),
+        _ => (0, -1),
+      };
+      return steps > 0 ? (step: step, total: steps) : null;
+    }
+    final s = currentSlide;
+    return s != null && s.clicks > 0 ? (step: step, total: s.clicks) : null;
+  }
+
   /// En el modo Navegador la página la reporta el navegador; en los demás se cuenta.
   bool get slideIsExact => (mode == Mode.browser && browser.hasPdf) || pcPresenting;
 
   // ---- "Proyectar en esta PC" (modo WiFi): la PC dice en qué página va
   int _shownPage = 0;
   int _shownTotal = 0;
+  int _shownStep = 0, _shownSteps = -1; // animación en la que va (la informa la PC)
   DateTime _shownPageAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// La app de escritorio está proyectando (avisa con cada respuesta, cada ~2 s).
@@ -148,8 +195,13 @@ class RemoteController extends ChangeNotifier {
   int get shownPage => pcPresenting ? _shownPage : 0;
   int get shownTotal => pcPresenting ? _shownTotal : 0;
 
-  void _onPcPage(int page, int total, int version) {
+  void _onPcPage(int page, int total, int version, int step, int steps) {
     final was = pcPresenting;
+    if (step != _shownStep || steps != _shownSteps) {
+      _shownStep = step;
+      _shownSteps = steps;
+      notifyListeners();
+    }
     _shownPage = page;
     _shownTotal = total;
     _shownPageAt = DateTime.now();
@@ -183,6 +235,11 @@ class RemoteController extends ChangeNotifier {
     mode = Mode.values.firstWhere((m) => m.name == _prefs.getString('mode'), orElse: () => Mode.bluetooth);
     invert = _prefs.getBool('invert') ?? false;
     arrows = _prefs.getBool('arrows') ?? false;
+    hand = _prefs.getString('hand') == 'left' ? Hand.left : Hand.right;
+    oneHand = _prefs.getBool('one_hand') ?? false;
+    tapGuard = _prefs.getBool('tap_guard') ?? true;
+    dnd = _prefs.getBool('dnd') ?? true;
+    notesFont = (_prefs.getDouble('notes_font') ?? 22).clamp(15, 34);
     selectedAddress = _prefs.getString('bt_addr');
     _btAuto = _prefs.getBool('bt_auto') ?? false;
     wifi.preferredName = _prefs.getString('wifi_name');
@@ -198,6 +255,9 @@ class RemoteController extends ChangeNotifier {
     await timer.load();
     await _restorePdf();
     await _restoreNotes();
+    _restoreMedia(); // en segundo plano: puede tardar con videos grandes
+    // Si la app se cerró de golpe presentando, devolver el "No molestar" como estaba
+    await NativeBridge.setDnd(false);
 
     _nativeSub = NativeBridge.events.listen(_onNative);
     languageChanged();
@@ -209,6 +269,8 @@ class RemoteController extends ChangeNotifier {
   @override
   void dispose() {
     _nativeSub?.cancel();
+    if (dndState == DndState.on) NativeBridge.setDnd(false);
+    if (locked) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     wifi.dispose();
     browser.dispose();
     _nudges.close();
@@ -224,7 +286,9 @@ class RemoteController extends ChangeNotifier {
     _foreground = true;
     await NativeBridge.setVolumeCapture(true);
     await WakelockPlus.enable();
+    if (locked) await _immersive(true);
     await _startMode(mode, resumed: true);
+    await _syncDnd(); // pudo dar el acceso a "No molestar" en los ajustes del sistema
   }
 
   /// La app pasó a segundo plano: soltar el volumen y la PC.
@@ -234,6 +298,7 @@ class RemoteController extends ChangeNotifier {
     await NativeBridge.setVolumeCapture(false);
     await WakelockPlus.disable();
     await _stopTransports(keepBrowser: true);
+    await _syncDnd();
   }
 
   Future<void> setMode(Mode m) async {
@@ -277,6 +342,16 @@ class RemoteController extends ChangeNotifier {
 
   void onVolume(bool up) => send(forward: invert ? !up : up);
 
+  /// Botones de la pantalla: con [tapGuard], un segundo toque muy seguido se ignora
+  /// (un roce o un doble toque sin querer no salta dos diapositivas).
+  void tap({required bool forward}) {
+    if (locked) return;
+    final now = DateTime.now();
+    if (tapGuard && now.difference(_lastTap) < const Duration(milliseconds: 380)) return;
+    _lastTap = now;
+    send(forward: forward);
+  }
+
   Future<void> send({required bool forward}) async {
     (forward ? pulseNext : pulsePrev).value++;
     final cmd = Cmd.of(forward: forward, arrows: arrows);
@@ -295,6 +370,9 @@ class RemoteController extends ChangeNotifier {
         }
       case Mode.wifi:
         if (wifi.target == null) return _nudge(t('Elige tu PC', 'Choose your computer'));
+        if (wifi.busy) {
+          return _nudge(t('Otro teléfono está presentando en esta PC', 'Another phone is presenting on this computer'));
+        }
         final sent = wifi.send(cmd);
         // Si la PC proyecta, ella dice la página exacta; si no, se cuentan las pulsaciones
         if (sent && !pcPresenting) _advance(forward);
@@ -459,6 +537,112 @@ class RemoteController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setHand(Hand h) async {
+    hand = h;
+    await _prefs.setString('hand', h.name);
+    notifyListeners();
+  }
+
+  Future<void> setOneHand(bool v) async {
+    oneHand = v;
+    await _prefs.setBool('one_hand', v);
+    notifyListeners();
+  }
+
+  Future<void> setTapGuard(bool v) async {
+    tapGuard = v;
+    await _prefs.setBool('tap_guard', v);
+    notifyListeners();
+  }
+
+  Future<void> setNotesFont(double v) async {
+    notesFont = v.clamp(15, 34);
+    notifyListeners();
+    await _prefs.setDouble('notes_font', notesFont);
+  }
+
+  // ================================================================ al presentar
+
+  /// Bloquear la pantalla: solo los botones de volumen cambian de diapositiva; se ocultan las
+  /// barras del sistema para que un roce en los bordes no saque de la app.
+  Future<void> setLocked(bool v) async {
+    if (v == locked) return;
+    locked = v;
+    HapticFeedback.mediumImpact();
+    notifyListeners();
+    await _immersive(v);
+  }
+
+  static Future<void> _immersive(bool on) =>
+      SystemChrome.setEnabledSystemUIMode(on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+
+  Future<void> setDnd(bool v) async {
+    dnd = v;
+    await _prefs.setBool('dnd', v);
+    if (v && (await NativeBridge.dndStatus()) == 'denied') {
+      dndState = DndState.needsAccess;
+      notifyListeners();
+      await NativeBridge.openDndSettings();
+      return;
+    }
+    await _syncDnd();
+  }
+
+  Future<void> openDndSettings() => NativeBridge.openDndSettings();
+
+  /// "No molestar" activo mientras la app está al frente y se puede presentar (conectado).
+  bool _dndBusy = false;
+  Future<void> _syncDnd() async {
+    if (!_ready || _dndBusy) return;
+    _dndBusy = true;
+    try {
+      // Una vez activo se queda mientras la app esté al frente: un corte de la conexión no debe
+      // dejar pasar avisos ni cambiar el modo del sistema a cada rato
+      final want = dnd && _foreground && (canSend || dndState == DndState.on);
+      final st = await NativeBridge.dndStatus();
+      final DndState next;
+      if (st == 'unsupported') {
+        next = DndState.unsupported;
+      } else if (st != 'granted') {
+        next = dnd ? DndState.needsAccess : DndState.off;
+      } else if (want) {
+        next = await NativeBridge.setDnd(true) == 'on' ? DndState.on : DndState.needsAccess;
+      } else {
+        if (dndState == DndState.on) await NativeBridge.setDnd(false);
+        next = DndState.off;
+      }
+      if (next != dndState) {
+        dndState = next;
+        super.notifyListeners();
+      }
+    } finally {
+      _dndBusy = false;
+    }
+  }
+
+  // ================================================================ empezar a presentar en la PC
+
+  /// La PC tiene una presentación elegida (y no la controla otro teléfono).
+  bool get pcCanStart => mode == Mode.wifi && wifi.online && !wifi.busy && wifi.pcHasDeck;
+
+  /// La PC está presentando con el programa original (PowerPoint, Keynote, Impress).
+  bool get pcNative => mode == Mode.wifi && wifi.online && wifi.pcDeckMode == DeckMode.native;
+
+  /// La presentación tiene animaciones o videos: conviene el programa original.
+  bool get deckHasAnimations => deck?.any((s) => s.clicks > 0) ?? false;
+
+  void startOnPc({required bool native}) {
+    if (!wifi.sendStart(native: native)) return _nudge(t('No se pudo enviar', 'Could not send'));
+    HapticFeedback.selectionClick();
+    _nudge(native
+        ? t('Abriendo la presentación en la PC…', 'Opening the presentation on the computer…')
+        : t('Preparando la presentación en la PC…', 'Preparing the presentation on the computer…'));
+  }
+
+  void stopOnPc() {
+    if (wifi.sendStop()) HapticFeedback.selectionClick();
+  }
+
   // ================================================================ Bluetooth
 
   Future<void> _startBluetooth() async {
@@ -587,11 +771,33 @@ class RemoteController extends ChangeNotifier {
     return File('${dir.path}/presentacion.pdf');
   }
 
+  /// La misma presentación en SVG, con animaciones (solo si la conversión pudo hacerlo).
+  Future<File> _svgStore() async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/presentacion.svg');
+  }
+
+  Future<Directory> _mediaDir() async => Directory('${(await getApplicationSupportDirectory()).path}/media');
+
+  /// Videos del archivo que se transmite desde el móvil (si el .pptx/.odp sigue guardado).
+  Future<void> _restoreMedia() async {
+    final name = _prefs.getString('pdf_name');
+    if (name == null || name != _slots[Mode.browser]!.name) return;
+    try {
+      final f = await _notesStore(Mode.browser);
+      if (!await f.exists()) return;
+      final dir = await _mediaDir();
+      final media = await DeckMediaSet.extract(await f.readAsBytes(), dir.path);
+      if (browser.pdfName == name) browser.setMedia(media);
+    } catch (_) {}
+  }
+
   Future<void> _restorePdf() async {
     final name = _prefs.getString('pdf_name');
     if (name == null) return;
     final f = await _pdfStore();
-    if (await f.exists()) await browser.setPdf(f, name);
+    final svg = await _svgStore();
+    if (await f.exists()) await browser.setPdf(f, name, svg: await svg.exists() ? svg : null);
   }
 
   /// Formatos que se pueden elegir en el modo Navegador.
@@ -612,9 +818,11 @@ class RemoteController extends ChangeNotifier {
     final bytes = await picked.readAsBytes();
     final dir = await getApplicationSupportDirectory();
     final dest = await _pdfStore();
+    final svgDest = await _svgStore();
 
     if (ext == 'pdf') {
       await clearNotes(of: Mode.browser); // un PDF no trae notas: no dejar las de otra presentación
+      if (await svgDest.exists()) await svgDest.delete(); // el de la presentación anterior
       await dest.writeAsBytes(bytes, flush: true);
       await _prefs.setString('pdf_name', name);
       await browser.setPdf(dest, name);
@@ -626,6 +834,7 @@ class RemoteController extends ChangeNotifier {
     notifyListeners();
     final input = File('${dir.path}/entrada.$ext');
     final output = File('${dir.path}/convertido.pdf');
+    final svgOutput = File('${dir.path}/convertido.svg');
     try {
       await input.writeAsBytes(bytes, flush: true);
 
@@ -652,15 +861,30 @@ class RemoteController extends ChangeNotifier {
         return;
       }
       if (await output.exists()) await output.delete();
+      if (await svgOutput.exists()) await svgOutput.delete();
       await NativeBridge.convertToPdf(
         input: input.path,
         output: output.path,
+        svgOutput: svgOutput.path,
         aspect: info?.aspect,
         expected: info?.total,
       );
       await output.copy(dest.path);
+      // Con SVG se ven las animaciones y transiciones en el navegador
+      final hasSvg = await svgOutput.exists() && await svgOutput.length() > 0;
+      if (hasSvg) {
+        await svgOutput.copy(svgDest.path);
+      } else if (await svgDest.exists()) {
+        await svgDest.delete();
+      }
       await _prefs.setString('pdf_name', name);
-      await browser.setPdf(dest, name);
+      await browser.setPdf(dest, name, svg: hasSvg ? svgDest : null);
+      // Videos y audios del archivo: se ponen encima del PDF en el navegador
+      final mediaDir = await _mediaDir();
+      try {
+        if (await mediaDir.exists()) await mediaDir.delete(recursive: true);
+      } catch (_) {}
+      if (kNotesExtensions.contains(ext)) browser.setMedia(await DeckMediaSet.extract(bytes, mediaDir.path));
       if (deck != null && kNotesExtensions.contains(ext)) _nudge(t('Listo: presentación convertida y notas cargadas', 'Done: presentation converted and notes loaded'));
     } on PlatformException catch (e) {
       _nudge('${t('No se pudo convertir', 'Could not convert')}: ${e.message ?? e.code}');
@@ -672,6 +896,7 @@ class RemoteController extends ChangeNotifier {
       try {
         if (await input.exists()) await input.delete();
         if (await output.exists()) await output.delete();
+        if (await svgOutput.exists()) await svgOutput.delete();
       } catch (_) {}
       notifyListeners();
     }
@@ -831,11 +1056,18 @@ class RemoteController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _couldSend = false;
+
   @override
   void notifyListeners() {
     if (_ready) {
       final s = _slot;
       if (s.deck != null) _prefs.setInt('notes_slide_${s.mode.name}', s.slide);
+      final can = canSend;
+      if (can != _couldSend) {
+        _couldSend = can;
+        _syncDnd();
+      }
     }
     super.notifyListeners();
   }
@@ -932,6 +1164,12 @@ class RemoteController extends ChangeNotifier {
       case Mode.wifi:
         final pc = wifi.target;
         if (pc == null) return ConnView(Conn.off, t('Sin PC', 'No computer'), t('Elige tu PC en la lista', 'Choose your computer in the list'));
+        if (wifi.online && wifi.busy) {
+          return ConnView(Conn.error, t('PC ocupada', 'Computer busy'), t('Otro teléfono está presentando', 'Another phone is presenting'));
+        }
+        if (wifi.online && pcNative) {
+          return ConnView(Conn.on, t('Presentando en la PC', 'Presenting on the computer'), t('Con el programa original', 'With the original app'));
+        }
         if (wifi.online && pcPresenting) {
           return ConnView(Conn.on, t('Proyectando en la PC', 'Presenting on the computer'),
               _shownTotal > 0 ? t('Diapositiva $_shownPage de $_shownTotal', 'Slide $_shownPage of $_shownTotal') : pc.name);

@@ -279,6 +279,9 @@ abstract final class PptxNotes {
     return parts.join('/');
   }
 
+  /// Texto UTF-8 de un XML del archivo (sin BOM).
+  static String decodeUtf8(Uint8List data) => _utf8(data);
+
   static String _utf8(Uint8List data) {
     // Quitar BOM si lo hay
     final start = (data.length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) ? 3 : 0;

@@ -44,6 +44,13 @@ Es un solo proyecto de Flutter que se compila en dos papeles:
 - **Varias pantallas sincronizadas (modo “Transmitir desde móvil”):** el teléfono lleva la diapositiva actual; todos los navegadores abiertos en la dirección muestran siempre la misma. Si alguien cambia de diapositiva con el teclado o el mouse en una de ellas, el cambio pasa por el teléfono y se replica en todas (y en las notas).
 - **Cronómetro** de la presentación, solo visible en el teléfono (arriba a la derecha): toca para iniciar o pausar; en pausa aparece ↺ para reiniciarlo. Sigue contando aunque salgas de la app o bloquees el teléfono.
 - **Dibujar sobre la diapositiva (modo “Transmitir desde móvil”):** el teléfono muestra la diapositiva actual y lo que dibujes —pluma, marcatextos o puntero láser, en varios colores y **cuatro grosores** (fino, normal, grueso, muy grueso; cada herramienta recuerda el suyo)— aparece al instante sobre la presentación en el navegador de la PC. Los dibujos se quedan en cada diapositiva hasta que los borres; se puede girar el teléfono para dibujar más grande.
+- **Borrador y ocultar anotaciones:** en la vista de dibujo, el **borrador** quita trazos completos (toca o arrastra encima; se puede deshacer, igual que “Borrar esta diapositiva”). El botón 👁 **oculta o muestra** los dibujos en la pantalla de la PC sin borrarlos; en el teléfono se ven tenues mientras están ocultos, y al volver a dibujar se muestran solos. En el menú ⋮ también está “Borrar todas las diapositivas”.
+- **Enlaces y videos:** al proyectar con Zlide (desde la PC o desde el móvil) los enlaces de las diapositivas se pueden usar con el mouse en la PC (también los que llevan a otra diapositiva), y los **videos y audios** insertados en un .pptx/.odp se reproducen en su lugar (clic encima). Desde el teléfono, en la vista de dibujo, aparecen botones para **abrir los enlaces en la PC** y **reproducir/pausar el video**. Formatos: mp4, m4v, webm, mov (según el navegador), mp3, m4a, wav, ogg.
+- **Presentar en su programa (animaciones):** en la app de escritorio (o desde el teléfono, en *Conexión → Presentar en la PC*) se puede abrir la presentación **en PowerPoint, Keynote o LibreOffice Impress** a pantalla completa. Ahí funcionan animaciones, transiciones, videos y enlaces exactamente como en el archivo; el teléfono la controla con teclas y cuenta las animaciones en las notas. Al proyectar con Zlide (PDF) las animaciones no se ven: cada diapositiva aparece completa.
+- **Un solo teléfono al presentar desde la PC:** mientras la PC presenta (con Zlide o con su programa), solo la controla el teléfono que empezó. Otro teléfono que intente conectarse ve “PC ocupada” y sus botones no hacen nada; tampoco puede bajar las notas ni la presentación. Se libera al terminar, con **Liberar** en la app de escritorio, o si ese teléfono no da señales en 90 s.
+- **Bloquear la pantalla:** botón **Bloquear** en la barra de acciones. La pantalla deja de responder a toques y se ocultan las barras del sistema (un roce en los bordes no saca de la app ni “atrás” hace nada); los **botones de volumen siguen funcionando** y las notas se pueden desplazar. Se desbloquea manteniendo presionado. Además, *Evitar toques accidentales* ignora un segundo toque muy seguido en los botones de la pantalla.
+- **Mano dominante y modo una mano:** en *Ajustes → Al presentar*: para zurdos, los botones (“siguiente” ancho), la barra de acciones y el panel de dibujo pasan al otro lado. Con **modo una mano** todo lo que se toca queda abajo, al alcance del pulgar (conexión, cronómetro y ajustes van en **Más**).
+- **No molestar al presentar (Android):** mientras estás conectado, Zlide activa “No molestar” (solo pasan las alarmas, así los avisos del cronómetro siguen vibrando) y al salir de la app lo deja como estaba. La primera vez pide permitir el acceso a “No molestar”. En iPhone no se puede activar desde una app: actívalo en el Centro de control.
 - **Por WiFi, las notas llegan desde la PC:** la presentación solo tiene que estar en la computadora.
 - **Modo “Transmitir desde móvil”:** el teléfono proyecta la presentación en el navegador de la PC, sin instalar nada en ella, y **convierte .pptx/.odp/.ppt a PDF dentro del teléfono**, sin internet.
 - Lee notas de **PowerPoint, LibreOffice, OnlyOffice, WPS, Google Slides exportado** (`.pptx`, `.odp` y variantes).
@@ -90,8 +97,8 @@ En una tablet (Android o iPad) no se puede instalar el receptor: los sistemas no
 | **Navegador** | Del mismo archivo que eliges para proyectar. |
 | **Bluetooth** (o WiFi sin archivo en la PC) | **Ver notas del presentador** en el teléfono y eliges el archivo ahí. |
 
-- **Botón ⤢** (esquina del recuadro de notas): las notas ocupan casi toda la pantalla y los botones se hacen compactos. Se regresa con el mismo botón o con “atrás”.
-- **Sincronía:** en Navegador es exacta. En Bluetooth y WiFi el teléfono **cuenta las pulsaciones**, incluidas las animaciones “al hacer clic” (igual que PowerPoint). Si se desfasa —por ejemplo, si cambiaste de diapositiva con el mouse— corrígelo con **− / +** en el panel (no mueve nada en la PC).
+- **Notas** (barra de acciones): las notas ocupan casi toda la pantalla y los botones se hacen compactos. Se regresa con el mismo botón o con “atrás”. El tamaño del texto se elige en *Ajustes → Notas* y se recuerda.
+- **Sincronía:** en Navegador es exacta. En Bluetooth y WiFi el teléfono **cuenta las pulsaciones**, incluidas las animaciones “al hacer clic” (igual que PowerPoint). Si se desfasa —por ejemplo, si cambiaste de diapositiva con el mouse— corrígelo con **− / +** en **Ir a** (no mueve nada en la PC).
 - **Cada modo tiene sus propias notas:** las que eliges en “Control Bluetooth” no aparecen en “Transmitir desde móvil”, y viceversa. En “Transmitir desde PC” mandan las de la app de escritorio (si no hay, las que elijas en el teléfono para ese modo).
 - Las diapositivas ocultas se saltan.
 
@@ -440,7 +447,8 @@ La primera conversión tarda unos segundos más (desempaca los archivos de Libre
 
 - La app del teléfono debe estar **abierta y al frente**. Al salir suelta el volumen y la conexión (para no interferir con otras apps); al volver se reconecta.
 - **iPhone:** iOS no da acceso directo a los botones de volumen; la app detecta el cambio y regresa el volumen a 50 % en cada pulsación (al salir restaura tu volumen). Apple podría objetarlo si se publica en la App Store.
-- WiFi y Navegador no tienen contraseña: alguien en la misma red podría cambiar la diapositiva. En la red de un salón no suele importar.
+- WiFi y Navegador no tienen contraseña: alguien en la misma red podría cambiar la diapositiva (al presentar desde la PC solo obedece al teléfono que empezó). En la red de un salón no suele importar.
+- Al proyectar con Zlide las animaciones no se ven (la presentación es un PDF); para verlas usa “Presentar en su programa”. Los videos vinculados a un archivo externo (no insertados) y los formatos que el navegador no reproduce (wmv, avi) no aparecen.
 - En redes que aíslan a los equipos (algunas de universidad u hotel), WiFi y Navegador no funcionan. Usa Bluetooth, o activa el punto de acceso del teléfono y conecta la PC a él.
 - Las notas por WiFi solo viajan por WiFi (no por Bluetooth del iPhone).
 
@@ -470,7 +478,11 @@ lib/
   common/theme.dart               colores y componentes de la interfaz
   common/i18n.dart                idioma (español/inglés): t('Texto', 'Text')
   common/pptx_notes.dart          lee notas, títulos y animaciones de .pptx y .odp
-  mobile/remote_page.dart         pantalla del teléfono
+  common/deck_media.dart          videos y audios de .pptx/.odp (se ponen encima del PDF)
+  mobile/remote_page.dart         pantalla del teléfono (presentar)
+  mobile/connection_view.dart     elegir modo y conectar (hoja “Conexión”)
+  mobile/settings_page.dart       ajustes
+  mobile/stage_widgets.dart       botones, barra de acciones, bloqueo
   mobile/remote_controller.dart   modos, reconexión, notas (del teléfono o de la PC)
   mobile/wifi_client.dart         descubrimiento mDNS + UDP
   mobile/browser_server.dart      servidor web + WebSocket del modo “Transmitir desde móvil”
@@ -488,7 +500,7 @@ lib/
   desktop/office.dart             conversión con LibreOffice (o PowerPoint en Windows)
 packages/slide_native/            plugin propio
   android/…/BtHidKeyboard.java    teclado Bluetooth HID
-  android/…/SlideNativePlugin.java  volumen, permisos
+  android/…/SlideNativePlugin.java  volumen, permisos, “No molestar”
   android/…/PptxConverter.java    presentación → PDF con LibreOfficeKit
   android/…/PdfPageRenderer.java  página del PDF como imagen (vista de dibujo)
   android/…/org/libreoffice/kit/  clases JNI de LibreOffice (MPL 2.0)

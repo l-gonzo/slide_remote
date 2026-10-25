@@ -7,12 +7,14 @@ import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
+import 'connection_view.dart';
 import 'draw_page.dart';
 import 'remote_controller.dart';
+import 'settings_page.dart';
+import 'stage_widgets.dart';
 import 'timer_chip.dart';
-import 'wifi_client.dart';
 
-/// Pantalla principal del teléfono (dirección "Atril").
+/// Pantalla principal del teléfono.
 ///
 /// Tiene tres estados, según lo que el presentador necesita en ese momento:
 ///  - **Preparar** (sin conexión y sin notas): elegir el modo y conectar.
@@ -20,7 +22,9 @@ import 'wifi_client.dart';
 ///  - **Presentar** (con notas): número y título de la diapositiva, notas grandes y los botones
 ///    abajo. Si la conexión se cae, las notas se quedan y aparece un aviso para reconectar.
 ///
-/// La conexión siempre está a un toque: la línea de estado de arriba abre la hoja "Conexión".
+/// Abajo siempre está el "control": una barra de acciones (ir a, diapositiva y dibujo, notas,
+/// bloquear) y los botones de cambiar diapositiva, acomodados del lado de la mano dominante.
+/// Con el modo una mano, todo lo que se toca queda abajo.
 class RemotePage extends StatefulWidget {
   const RemotePage({super.key});
 
@@ -35,8 +39,10 @@ class _RemotePageState extends State<RemotePage> {
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<String>? _nudgeSub;
 
-  double _notesFont = 22;
   bool _notesExpanded = false;
+
+  /// Se cerró el aviso "tu presentación está lista en la PC".
+  bool _startDismissed = false;
 
   @override
   void initState() {
@@ -62,11 +68,15 @@ class _RemotePageState extends State<RemotePage> {
   }
 
   bool get _connected => c.status.conn == Conn.on;
+  bool get _left => c.hand == Hand.left;
 
   bool get _canDraw =>
       (c.mode == Mode.browser && c.browser.hasPdf && !c.converting) || (c.mode == Mode.wifi && c.pcDrawUri != null);
 
   _View get _view => c.deck != null ? _View.notes : (_connected ? _View.ready : _View.setup);
+
+  /// Aviso para empezar a presentar en la PC (modo WiFi, la PC tiene la presentación elegida).
+  bool get _showStart => c.pcCanStart && c.wifi.pcDeckMode == DeckMode.none && !_startDismissed;
 
   // ================================================================ estructura
 
@@ -80,45 +90,29 @@ class _RemotePageState extends State<RemotePage> {
             if (!c.ready) return const Center(child: CircularProgressIndicator());
             final view = _view;
             if (view != _View.notes) _notesExpanded = false;
+            if (!c.pcCanStart) _startDismissed = false;
             final expanded = view == _View.notes && _notesExpanded;
             return PopScope(
-              // Con las notas expandidas, "atrás" solo las contrae
-              canPop: !expanded,
+              // Con la pantalla bloqueada "atrás" no hace nada; con las notas expandidas, las contrae
+              canPop: !expanded && !c.locked,
               onPopInvokedWithResult: (didPop, _) {
-                if (!didPop && expanded) setState(() => _notesExpanded = false);
-              },
-              child: LayoutBuilder(builder: (context, box) {
-                final short = box.maxHeight < 640;
-                // Muy baja (pantalla dividida, ventana): encabezado de una línea y botones compactos
-                final tight = box.maxHeight < 520;
-                // Pantalla ancha (tableta horizontal): contenido a la izquierda, botones a la derecha.
-                // Preparar sigue en una columna: es un formulario, no gana nada con dos paneles.
-                if (box.maxWidth >= Bp.expanded && view != _View.setup) {
-                  return _twoPane(view, expanded: expanded, width: box.maxWidth);
+                if (didPop) return;
+                if (c.locked) {
+                  HapticFeedback.heavyImpact();
+                } else if (expanded) {
+                  setState(() => _notesExpanded = false);
                 }
-                // Una columna, con ancho máximo para que nada se estire en tabletas
-                return MaxWidth(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    _topBar(),
-                    if (view == _View.notes && !_connected) _reconnectBanner(),
-                    Expanded(
-                      child: _viewSwitcher(view, switch (view) {
-                        _View.setup => _setupView(),
-                        _View.ready => _readyView(box.maxHeight),
-                        _View.notes => _notesView(short: short, expanded: expanded, tight: tight),
-                      }),
-                    ),
-                    if (view != _View.ready)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, Sp.m),
-                        child: SizedBox(
-                          height: view == _View.setup || expanded || tight ? 64 : (short ? 92 : 108),
-                          child: _dockRow(compact: view == _View.setup || expanded || tight),
-                        ),
-                      ),
-                  ]),
-                );
-              }),
+              },
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  // Pantalla ancha (tableta horizontal): contenido y control lado a lado.
+                  // Preparar sigue en una columna: es un formulario, no gana nada con dos paneles.
+                  if (box.maxWidth >= Bp.expanded && view != _View.setup) {
+                    return _twoPane(view, expanded: expanded, box: box);
+                  }
+                  return _onePane(view, expanded: expanded, box: box);
+                },
+              ),
             );
           },
         ),
@@ -126,100 +120,273 @@ class _RemotePageState extends State<RemotePage> {
     );
   }
 
+  Widget _onePane(_View view, {required bool expanded, required BoxConstraints box}) {
+    final short = box.maxHeight < 640;
+    // Muy baja (pantalla dividida, ventana): encabezado de una línea y control compacto
+    final tight = box.maxHeight < 520;
+    return MaxWidth(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _topBar(),
+          ..._banners(view),
+          Expanded(
+            child: _viewSwitcher(view, switch (view) {
+              _View.setup => _setupView(),
+              _View.ready => _readyIntro(),
+              _View.notes => _notesView(short: short, expanded: expanded, tight: tight),
+            }),
+          ),
+          if (view != _View.setup)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, Sp.m),
+              child: _control(view, expanded: expanded, tight: tight, short: short, height: box.maxHeight),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Listo y Presentar en pantallas anchas: a un lado el contenido (notas o indicaciones), del
+  /// lado de la mano lo que se toca (siguiente diapositiva, acciones y los botones grandes).
+  Widget _twoPane(_View view, {required bool expanded, required BoxConstraints box}) {
+    final next = view == _View.notes ? c.nextSlide : null;
+    final content = Expanded(
+      child: _viewSwitcher(
+        view,
+        view == _View.ready ? _readyIntro() : _notesView(short: false, expanded: expanded, showNext: false),
+      ),
+    );
+    final panel = SizedBox(
+      width: (box.maxWidth * 0.32).clamp(320.0, 420.0),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(_left ? Sp.l : 0, Sp.l, _left ? 0 : Sp.l, Sp.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (next != null) ...[
+              _nextLine(next, compact: false, short: false, padding: EdgeInsets.zero),
+              const SizedBox(height: Sp.l),
+            ],
+            _actionsOrLock(view, expanded: expanded, tight: false),
+            const SizedBox(height: Sp.s + 2),
+            Expanded(child: _pads(vertical: true)),
+          ],
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _topBar(),
+        ..._banners(view),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: _left ? [panel, content] : [content, panel],
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Cambio entre Preparar / Listo / Presentar. Cada vista ocupa todo el espacio, desde arriba
   /// (el AnimatedSwitcher por defecto las centraría verticalmente).
   Widget _viewSwitcher(_View view, Widget child) => AnimatedSwitcher(
-        duration: Mo.of(context, Mo.med),
-        switchInCurve: Mo.curve,
-        switchOutCurve: Curves.easeIn,
-        layoutBuilder: (current, previous) =>
-            Stack(fit: StackFit.expand, children: [...previous, if (current != null) current]),
-        child: KeyedSubtree(key: ValueKey(view), child: child),
-      );
+    duration: Mo.of(context, Mo.med),
+    switchInCurve: Mo.curve,
+    switchOutCurve: Curves.easeIn,
+    layoutBuilder: (current, previous) =>
+        Stack(fit: StackFit.expand, children: [...previous, if (current != null) current]),
+    child: KeyedSubtree(key: ValueKey(view), child: child),
+  );
 
-  /// Listo y Presentar en pantallas anchas: a la izquierda el contenido (notas o indicaciones),
-  /// a la derecha lo que se toca (siguiente diapositiva y los botones grandes, uno sobre otro).
-  Widget _twoPane(_View view, {required bool expanded, required double width}) {
-    final next = view == _View.notes ? c.nextSlide : null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _topBar(),
-      if (view == _View.notes && !_connected) _reconnectBanner(),
-      Expanded(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(
-            child: _viewSwitcher(
-              view,
-              view == _View.ready ? _readyIntro() : _notesView(short: false, expanded: expanded, showNext: false),
-            ),
-          ),
-          SizedBox(
-            width: (width * 0.3).clamp(300.0, 400.0),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, Sp.l, Sp.l, Sp.m),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (next != null) ...[
-                  _nextLine(next, compact: false, short: false, padding: EdgeInsets.zero),
-                  const SizedBox(height: Sp.m),
-                ],
-                Expanded(child: _dockColumn()),
-              ]),
-            ),
-          ),
-        ]),
+  List<Widget> _banners(_View view) => [
+    if (view == _View.notes && !_connected) _reconnectBanner(),
+    if (view != _View.setup && _showStart)
+      IgnorePointer(
+        ignoring: c.locked,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, 0),
+          child: PresentOnPc(c: c, onDismiss: () => setState(() => _startDismissed = true)),
+        ),
       ),
-    ]);
+  ];
+
+  // ================================================================ control (abajo)
+
+  /// Barra de acciones (o la de pantalla bloqueada) y los botones de cambiar diapositiva.
+  Widget _control(
+    _View view, {
+    required bool expanded,
+    required bool tight,
+    required bool short,
+    required double height,
+  }) {
+    final double padsHeight;
+    final bool vertical;
+    if (view == _View.ready) {
+      // Sin notas: botones grandes, uno sobre otro
+      vertical = true;
+      padsHeight = (height * (c.oneHand ? 0.4 : 0.36)).clamp(tight ? 140.0 : 180.0, 320.0);
+    } else {
+      vertical = false;
+      padsHeight = c.oneHand ? (tight ? 80.0 : 116.0) : (expanded || tight ? 64.0 : (short ? 88.0 : 100.0));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _actionsOrLock(view, expanded: expanded, tight: tight),
+        const SizedBox(height: Sp.s + 2),
+        SizedBox(
+          height: padsHeight,
+          child: _pads(vertical: vertical, compact: !vertical && (expanded || tight)),
+        ),
+      ],
+    );
+  }
+
+  Widget _pads({required bool vertical, bool compact = false}) => NavPads(
+    onPrev: () => c.tap(forward: false),
+    onNext: () => c.tap(forward: true),
+    prevPulse: c.pulsePrev,
+    nextPulse: c.pulseNext,
+    prevHint: c.invert ? 'VOL +' : 'VOL −',
+    nextHint: c.invert ? 'VOL −' : 'VOL +',
+    leftHanded: _left,
+    vertical: vertical,
+    compact: compact,
+    enabled: !c.locked,
+    dim: !c.canSend,
+  );
+
+  Widget _actionsOrLock(_View view, {required bool expanded, required bool tight}) => AnimatedSwitcher(
+    duration: Mo.of(context, Mo.fast),
+    child: c.locked
+        ? LockBar(key: const ValueKey('lock'), dense: tight, onUnlock: () => c.setLocked(false))
+        : ActionBar(
+            key: const ValueKey('actions'),
+            dense: tight,
+            leftHanded: _left,
+            actions: _actions(view, expanded: expanded),
+          ),
+  );
+
+  /// En orden de cercanía al pulgar: lo primero queda del lado de la mano.
+  List<StageAction> _actions(_View view, {required bool expanded}) {
+    final canJump = c.deck != null || _knownPage() != null;
+    return [
+      StageAction(
+        icon: Icons.format_list_numbered_rounded,
+        label: t('Ir a', 'Go to'),
+        tooltip: t('Ir a otra diapositiva', 'Go to another slide'),
+        onTap: canJump ? _openSlideList : null,
+      ),
+      if (_canDraw)
+        StageAction(
+          icon: Icons.draw_rounded,
+          label: t('Dibujar', 'Draw'),
+          tooltip: t('Ver la diapositiva y dibujar', 'View the slide and draw'),
+          onTap: _openDraw,
+        ),
+      if (view == _View.notes)
+        StageAction(
+          icon: expanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
+          label: t('Notas', 'Notes'),
+          tooltip: expanded ? t('Contraer notas', 'Collapse notes') : t('Expandir notas', 'Expand notes'),
+          active: expanded,
+          onTap: () => setState(() => _notesExpanded = !expanded),
+        ),
+      if (c.oneHand) StageAction(icon: Icons.more_horiz_rounded, label: t('Más', 'More'), onTap: _openMore),
+      StageAction(
+        icon: Icons.lock_outline_rounded,
+        label: t('Bloquear', 'Lock'),
+        tooltip: t('Bloquear la pantalla (solo volumen)', 'Lock the screen (volume only)'),
+        onTap: () => c.setLocked(true),
+      ),
+    ];
   }
 
   // ================================================================ barra superior
 
   Widget _topBar() {
     final s = c.status;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Sp.s, Sp.xs, Sp.xs, 0),
-      child: Row(children: [
-        Expanded(
-          child: Semantics(
-            button: true,
-            label: t('Conexión', 'Connection'),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(Rad.s),
-              onTap: _openConnection,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.xs),
-                  child: Row(children: [
-                    Dot(connColor(s.conn)),
-                    const SizedBox(width: Sp.m),
-                    Flexible(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                        Text(s.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Txt.text(15, weight: FontWeight.w600, height: 1.2)),
-                        Text(
-                          [_modeName(c.mode), if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!].join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Txt.text(12.5, color: Pal.muted, height: 1.25),
+    return IgnorePointer(
+      ignoring: c.locked,
+      child: AnimatedOpacity(
+        duration: Mo.of(context, Mo.med),
+        opacity: c.locked ? 0.5 : 1,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.s, Sp.xs, Sp.xs, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  label: t('Conexión', 'Connection'),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(Rad.m),
+                    onTap: _openConnection,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 52),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.xs),
+                        child: Row(
+                          children: [
+                            Dot(connColor(s.conn)),
+                            const SizedBox(width: Sp.m),
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    s.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Txt.text(15, weight: FontWeight.w700, height: 1.2),
+                                  ),
+                                  Text(
+                                    [
+                                      modeName(c.mode),
+                                      if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!,
+                                    ].join(' · '),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Txt.text(12.5, color: Pal.muted, height: 1.25),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: Sp.xs),
+                            Icon(Icons.expand_more_rounded, size: 18, color: Pal.muted),
+                          ],
                         ),
-                      ]),
+                      ),
                     ),
-                    const SizedBox(width: Sp.xs),
-                    Icon(Icons.expand_more_rounded, size: 18, color: Pal.muted),
-                  ]),
+                  ),
                 ),
               ),
-            ),
+              if (c.dndState == DndState.on)
+                Tooltip(
+                  message: t('No molestar activo', 'Do not disturb is on'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Sp.xs),
+                    child: Icon(Icons.do_not_disturb_on_outlined, size: 18, color: Pal.muted),
+                  ),
+                ),
+              TimerChip(c.timer),
+              if (!c.oneHand)
+                IconButton(
+                  onPressed: _openSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: t('Ajustes', 'Settings'),
+                ),
+            ],
           ),
         ),
-        TimerChip(c.timer),
-        IconButton(
-          onPressed: _openSettings,
-          icon: const Icon(Icons.tune_rounded),
-          tooltip: t('Ajustes', 'Settings'),
-        ),
-      ]),
+      ),
     );
   }
 
@@ -227,29 +394,34 @@ class _RemotePageState extends State<RemotePage> {
   Widget _reconnectBanner() {
     final s = c.status;
     final color = s.conn == Conn.error ? Pal.error : Pal.busy;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, 0),
-      child: Material(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(Rad.m),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(Rad.m),
-          onTap: _openConnection,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.l, Sp.xs, Sp.xs, Sp.xs),
-            child: Row(children: [
-              Icon(Icons.link_off_rounded, size: 20, color: color),
-              const SizedBox(width: Sp.m),
-              Expanded(
-                child: Text(
-                  s.subtitle?.isNotEmpty == true ? '${s.title} · ${s.subtitle}' : s.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Txt.text(14, weight: FontWeight.w600, height: 1.3),
-                ),
+    return IgnorePointer(
+      ignoring: c.locked,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, 0),
+        child: Material(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(Rad.l),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(Rad.l),
+            onTap: _openConnection,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.l, Sp.xs, Sp.xs, Sp.xs),
+              child: Row(
+                children: [
+                  Icon(Icons.link_off_rounded, size: 20, color: color),
+                  const SizedBox(width: Sp.m),
+                  Expanded(
+                    child: Text(
+                      s.subtitle?.isNotEmpty == true ? '${s.title} · ${s.subtitle}' : s.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Txt.text(14, weight: FontWeight.w600, height: 1.3),
+                    ),
+                  ),
+                  TextButton(onPressed: _openConnection, child: Text(t('Conectar', 'Connect'))),
+                ],
               ),
-              TextButton(onPressed: _openConnection, child: Text(t('Conectar', 'Connect'))),
-            ]),
+            ),
           ),
         ),
       ),
@@ -259,42 +431,38 @@ class _RemotePageState extends State<RemotePage> {
   // ================================================================ Preparar
 
   Widget _setupView() => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(Sp.page, Sp.l, Sp.page, Sp.l),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
+    padding: const EdgeInsets.fromLTRB(Sp.page, Sp.l, Sp.page, Sp.xl),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
             Image.asset('assets/icon/logo.png', width: 34, height: 34, filterQuality: FilterQuality.medium),
             const SizedBox(width: Sp.xs),
             Text('Zlide', style: Txt.number(30)),
-          ]),
-          const SizedBox(height: Sp.l),
-          _modeSelector(),
-          const SizedBox(height: Sp.xl),
-          _modeContent(),
-          const SizedBox(height: Sp.l),
-          _addNotesLink(),
-        ]),
-      );
-
-  Widget _modeSelector() => Segmented<Mode>(
-        values: Mode.values,
-        labels: [
-          t('Control\nBluetooth', 'Bluetooth\ncontrol'),
-          t('Transmitir\ndesde PC', 'Stream\nfrom PC'),
-          t('Transmitir\ndesde móvil', 'Stream\nfrom phone'),
-        ],
-        selected: c.mode,
-        onChanged: c.setMode,
-      );
+          ],
+        ),
+        const SizedBox(height: Sp.xl),
+        Text(t('¿Cómo vas a presentar?', 'How will you present?'), style: Txt.title(28)),
+        const SizedBox(height: Sp.s),
+        Text(
+          t(
+            'Elige cómo se conecta el teléfono con la PC. Puedes cambiarlo cuando quieras.',
+            'Choose how the phone connects to the computer. You can change it anytime.',
+          ),
+          style: Txt.text(15, color: Pal.muted),
+        ),
+        const SizedBox(height: Sp.l),
+        ModePicker(c: c),
+        const SizedBox(height: Sp.xxl),
+        ConnectionContent(c: c, onNudge: _showNudge, onDraw: _openDraw),
+        const SizedBox(height: Sp.l),
+        _addNotesLink(),
+      ],
+    ),
+  );
 
   // ================================================================ Listo (sin notas)
-
-  Widget _readyView(double height) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: _readyIntro()),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Sp.l, 0, Sp.l, Sp.m),
-          child: SizedBox(height: (height * 0.42).clamp(height < 520 ? 150.0 : 200.0, 340.0), child: _dockColumn()),
-        ),
-      ]);
 
   /// Número (si se sabe), "Listo para presentar" y las indicaciones.
   Widget _readyIntro() {
@@ -303,40 +471,46 @@ class _RemotePageState extends State<RemotePage> {
     final page = _knownPage();
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(Sp.page, Sp.xl, Sp.page, Sp.l),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (page != null) ...[
-          _jumpTarget(
-            Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Text(page.$1.toString().padLeft(2, '0'), style: Txt.number(64)),
-              const SizedBox(width: Sp.s),
-              Text('/ ${page.$2}', style: Txt.digits(18, color: Pal.muted, weight: FontWeight.w500)),
-            ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (page != null) ...[
+            _jumpTarget(
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(page.$1.toString().padLeft(2, '0'), style: Txt.number(64)),
+                  const SizedBox(width: Sp.s),
+                  Text(
+                    '/ ${page.$2}',
+                    style: Txt.digits(18, color: Pal.muted, weight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Sp.l),
+          ],
+          Text(t('Listo para presentar', 'Ready to present'), style: Txt.title(30)),
+          const SizedBox(height: Sp.s),
+          Text(
+            t(
+              'Cambia de diapositiva con los botones de volumen o con los de abajo.',
+              'Change slides with the volume buttons or the buttons below.',
+            ),
+            style: Txt.text(16, color: Pal.muted),
           ),
           const SizedBox(height: Sp.l),
+          Wrap(
+            spacing: Sp.s,
+            runSpacing: Sp.s,
+            children: [_keyHint(fwd, t('siguiente', 'next')), _keyHint(back, t('anterior', 'previous'))],
+          ),
+          const SizedBox(height: Sp.l),
+          IgnorePointer(ignoring: c.locked, child: _addNotesLink()),
         ],
-        Text(t('Listo para presentar', 'Ready to present'), style: Txt.title(30)),
-        const SizedBox(height: Sp.s),
-        Text(
-          t('Cambia de diapositiva con los botones de volumen o con los de abajo.',
-              'Change slides with the volume buttons or the buttons below.'),
-          style: Txt.text(16, color: Pal.muted),
-        ),
-        const SizedBox(height: Sp.l),
-        Wrap(spacing: Sp.s, runSpacing: Sp.s, children: [
-          _keyHint(fwd, t('siguiente', 'next')),
-          _keyHint(back, t('anterior', 'previous')),
-        ]),
-        const SizedBox(height: Sp.l),
-        Wrap(spacing: Sp.s, runSpacing: Sp.xs, children: [
-          _addNotesLink(),
-          if (_canDraw)
-            TextButton.icon(
-              onPressed: _openDraw,
-              icon: const Icon(Icons.draw_rounded, size: 18),
-              label: Text(t('Dibujar sobre la diapositiva', 'Draw on the slide')),
-            ),
-        ]),
-      ]),
+      ),
     );
   }
 
@@ -348,45 +522,64 @@ class _RemotePageState extends State<RemotePage> {
   }
 
   Widget _keyHint(String key, String what) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.s),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(Rad.s),
-          border: Border.all(color: Pal.faint, width: 1.5),
-        ),
-        child: Text.rich(TextSpan(children: [
-          TextSpan(text: key, style: Txt.digits(13, color: Pal.accent)),
-          TextSpan(text: '  $what', style: Txt.text(14, weight: FontWeight.w600, height: 1.2)),
-        ])),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: Sp.m, vertical: Sp.s),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(Rad.s),
+      border: Border.all(color: Pal.faint, width: 1.5),
+    ),
+    child: Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: key,
+            style: Txt.digits(13, color: Pal.accent),
+          ),
+          TextSpan(
+            text: '  $what',
+            style: Txt.text(14, weight: FontWeight.w600, height: 1.2),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _addNotesLink() {
     if (c.deckLoading) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: Sp.m),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-          const SizedBox(width: Sp.m),
-          Text(t('Leyendo notas…', 'Reading notes…'), style: Txt.text(15, color: Pal.muted)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: Sp.m),
+            Text(t('Leyendo notas…', 'Reading notes…'), style: Txt.text(15, color: Pal.muted)),
+          ],
+        ),
       );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      TextButton.icon(
-        onPressed: c.pickNotes,
-        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Sp.s)),
-        icon: const Icon(Icons.add_rounded, size: 20),
-        label: Text(t('Agregar notas del presentador', 'Add speaker notes')),
-      ),
-      if (c.mode == Mode.wifi)
-        Padding(
-          padding: const EdgeInsets.only(left: Sp.s),
-          child: Text(
-            t('O elige la presentación en la app de la PC: las notas llegan solas.',
-                'Or choose the presentation in the desktop app: the notes arrive by themselves.'),
-            style: Txt.text(13, color: Pal.muted, height: 1.35),
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextButton.icon(
+          onPressed: c.pickNotes,
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Sp.s)),
+          icon: const Icon(Icons.add_rounded, size: 20),
+          label: Text(t('Agregar notas del presentador', 'Add speaker notes')),
         ),
-    ]);
+        if (c.mode == Mode.wifi)
+          Padding(
+            padding: const EdgeInsets.only(left: Sp.s),
+            child: Text(
+              t(
+                'O elige la presentación en la app de la PC: las notas llegan solas.',
+                'Or choose the presentation in the desktop app: the notes arrive by themselves.',
+              ),
+              style: Txt.text(13, color: Pal.muted, height: 1.35),
+            ),
+          ),
+      ],
+    );
   }
 
   // ================================================================ Presentar (con notas)
@@ -399,112 +592,114 @@ class _RemotePageState extends State<RemotePage> {
     final number = (c.slide + 1).toString().padLeft(2, '0');
     final title = s?.title.isNotEmpty == true ? s!.title : '${t('Diapositiva', 'Slide')} ${s?.number ?? c.slide + 1}';
     final slideKey = ValueKey('${c.slide}-${c.deckName}');
+    final fx = c.animProgress;
+    final steps = fx != null
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: Pal.faint, width: 1.5),
+            ),
+            child: Text(
+              '${t('animación', 'animation')} ${fx.step}/${fx.total}',
+              style: Txt.text(12, weight: FontWeight.w600, color: Pal.muted, height: 1.2),
+            ),
+          )
+        : null;
 
-    final actions = Row(mainAxisSize: MainAxisSize.min, children: [
-      // Corrección manual del contador (no mueve nada en la PC)
-      if (!c.slideIsExact) ...[
-        _iconAction(Icons.remove_rounded, t('Diapositiva anterior en las notas', 'Previous slide in the notes'),
-            () => c.adjustSlide(-1)),
-        _iconAction(Icons.add_rounded, t('Diapositiva siguiente en las notas', 'Next slide in the notes'),
-            () => c.adjustSlide(1)),
-      ],
-      if (_canDraw) _iconAction(Icons.draw_rounded, t('Dibujar sobre la diapositiva', 'Draw on the slide'), _openDraw),
-      _iconAction(
-        expanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
-        expanded ? t('Contraer notas', 'Collapse notes') : t('Expandir notas', 'Expand notes'),
-        () => setState(() => _notesExpanded = !expanded),
-      ),
-    ]);
-
-    final head = expanded || tight
-        // Expandidas (o poca altura): el encabezado se reduce a una línea
+    final Widget head = expanded || tight || c.oneHand
+        // Expandidas, poca altura o una mano: el encabezado se reduce a una línea
         ? Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.page, Sp.s, Sp.s, 0),
-            child: Row(children: [
-              _jumpTarget(Padding(
-                padding: const EdgeInsets.symmetric(vertical: Sp.s),
-                child: Text('$number / $total', style: Txt.digits(16, color: Pal.accent)),
-              )),
-              const SizedBox(width: Sp.m),
-              Expanded(
-                child: Text(title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(15, weight: FontWeight.w600)),
-              ),
-              actions,
-            ]),
+            padding: const EdgeInsets.fromLTRB(Sp.page, Sp.s, Sp.page, 0),
+            child: Row(
+              children: [
+                _jumpTarget(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: Sp.s),
+                    child: Text('$number / $total', style: Txt.digits(16, color: Pal.accent)),
+                  ),
+                ),
+                const SizedBox(width: Sp.m),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Txt.text(15, weight: FontWeight.w700),
+                  ),
+                ),
+                if (steps != null) ...[const SizedBox(width: Sp.s), steps],
+              ],
+            ),
           )
         : Padding(
-            padding: EdgeInsets.fromLTRB(Sp.page, short ? Sp.s : Sp.l, Sp.s, 0),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                _jumpTarget(Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  _swap(
-                    slideKey,
-                    Text(number, style: Txt.number(short ? 60 : 76)),
-                  ),
-                  const SizedBox(width: Sp.s),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('/ $total', style: Txt.digits(19, color: Pal.muted, weight: FontWeight.w500)),
-                  ),
-                ])),
-                const Spacer(),
-                actions,
-              ]),
-              const SizedBox(height: Sp.m),
-              Padding(
-                padding: const EdgeInsets.only(right: Sp.m),
-                child: _swap(
+            padding: EdgeInsets.fromLTRB(Sp.page, short ? Sp.s : Sp.l, Sp.page, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _jumpTarget(
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _swap(slideKey, Text(number, style: Txt.number(short ? 60 : 76))),
+                          const SizedBox(width: Sp.s),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              '/ $total',
+                              style: Txt.digits(19, color: Pal.muted, weight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (steps != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: steps),
+                  ],
+                ),
+                const SizedBox(height: Sp.m),
+                _swap(
                   slideKey,
                   Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Txt.title(short ? 21 : 24)),
                 ),
-              ),
-              const SizedBox(height: Sp.l),
-              Padding(
-                padding: const EdgeInsets.only(right: Sp.m),
-                child: Row(children: [
-                  Expanded(child: _Progress(current: c.slide, total: total)),
-                  if (s != null && s.clicks > 0) ...[
-                    const SizedBox(width: Sp.m),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 3),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: Pal.faint, width: 1.5),
-                      ),
-                      child: Text('${t('animación', 'animation')} ${c.step}/${s.clicks}',
-                          style: Txt.text(12, weight: FontWeight.w600, color: Pal.muted, height: 1.2)),
-                    ),
-                  ],
-                ]),
-              ),
-            ]),
+                const SizedBox(height: Sp.l),
+                SlideProgress(current: c.slide, total: total),
+              ],
+            ),
           );
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      head,
-      Expanded(
-        child: ShaderMask(
-          // Desvanecer el final para que se note que hay más texto
-          shaderCallback: (r) => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.white, Colors.white, Colors.transparent],
-            stops: [0, 0.9, 1],
-          ).createShader(r),
-          blendMode: BlendMode.dstIn,
-          child: SingleChildScrollView(
-            key: slideKey, // al cambiar de diapositiva, regresar arriba
-            padding: EdgeInsets.fromLTRB(Sp.page, expanded || tight ? Sp.m : Sp.l + 4, Sp.page, Sp.xl),
-            child: Text(
-              hasNotes ? s.notes.trim() : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
-              style: Txt.text(_notesFont, height: 1.5, color: hasNotes ? Pal.ink : Pal.faint),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        IgnorePointer(ignoring: c.locked, child: head),
+        Expanded(
+          child: ShaderMask(
+            // Desvanecer el final para que se note que hay más texto
+            shaderCallback: (r) => const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.white, Colors.white, Colors.transparent],
+              stops: [0, 0.9, 1],
+            ).createShader(r),
+            blendMode: BlendMode.dstIn,
+            // Bloqueada, las notas se siguen pudiendo desplazar (leer no cambia nada)
+            child: SingleChildScrollView(
+              key: slideKey, // al cambiar de diapositiva, regresar arriba
+              padding: EdgeInsets.fromLTRB(Sp.page, expanded || tight ? Sp.m : Sp.l + 4, Sp.page, Sp.xl),
+              child: Text(
+                hasNotes ? s.notes.trim() : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
+                style: Txt.text(c.notesFont, height: 1.5, color: hasNotes ? Pal.ink : Pal.faint),
+              ),
             ),
           ),
         ),
-      ),
-      if (next != null && showNext) _nextLine(next, compact: expanded || tight, short: short),
-    ]);
+        if (next != null && showNext) _nextLine(next, compact: expanded || tight, short: short),
+      ],
+    );
   }
 
   /// "Sigue → título". Al transmitir, la miniatura de la siguiente diapositiva en su lugar.
@@ -518,10 +713,18 @@ class _RemotePageState extends State<RemotePage> {
     final text = Padding(
       padding: padding,
       child: Text.rich(
-        TextSpan(children: [
-          TextSpan(text: '${t('Sigue', 'Next')}  →  ', style: Txt.text(14, color: Pal.muted)),
-          TextSpan(text: title, style: Txt.text(14, weight: FontWeight.w600)),
-        ]),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${t('Sigue', 'Next')}  →  ',
+              style: Txt.text(14, color: Pal.muted),
+            ),
+            TextSpan(
+              text: title,
+              style: Txt.text(14, weight: FontWeight.w600),
+            ),
+          ],
+        ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -540,52 +743,74 @@ class _RemotePageState extends State<RemotePage> {
           padding: padding.copyWith(top: padding.top + Sp.xs),
           child: SizedBox(
             height: h,
-            child: Row(children: [
-              AspectRatio(
-                aspectRatio: img == null ? 16 / 9 : img.width / img.height,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Pal.raise,
-                    borderRadius: BorderRadius.circular(Rad.s - 4),
-                    border: Border.all(color: Pal.rule),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(Rad.s - 5),
-                    child: AnimatedSwitcher(
-                      duration: Mo.of(context, Mo.fast),
-                      child: img == null
-                          ? const SizedBox.expand()
-                          : Image.memory(img.bytes, key: ValueKey(img), fit: BoxFit.cover, gaplessPlayback: true),
+            child: Row(
+              children: [
+                AspectRatio(
+                  aspectRatio: img == null ? 16 / 9 : img.width / img.height,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Pal.raise,
+                      borderRadius: BorderRadius.circular(Rad.s - 4),
+                      border: Border.all(color: Pal.rule),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(Rad.s - 5),
+                      child: AnimatedSwitcher(
+                        duration: Mo.of(context, Mo.fast),
+                        child: img == null
+                            ? const SizedBox.expand()
+                            : Image.memory(img.bytes, key: ValueKey(img), fit: BoxFit.cover, gaplessPlayback: true),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: Sp.m),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(t('Sigue', 'Next'), style: Txt.text(12.5, color: Pal.muted, height: 1.2)),
-                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Txt.text(14, weight: FontWeight.w600, height: 1.25)),
-                ]),
-              ),
-            ]),
+                const SizedBox(width: Sp.m),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(t('Sigue', 'Next'), style: Txt.text(12.5, color: Pal.muted, height: 1.2)),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Txt.text(14, weight: FontWeight.w600, height: 1.25),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
+  /// Cambio suave del número y el título al pasar de diapositiva.
+  Widget _swap(Key key, Widget child) => AnimatedSwitcher(
+    duration: Mo.of(context, Mo.fast),
+    layoutBuilder: (current, previous) =>
+        Stack(alignment: Alignment.bottomLeft, children: [...previous, if (current != null) current]),
+    transitionBuilder: (w, a) => FadeTransition(
+      opacity: a,
+      child: SlideTransition(
+        position: Tween(begin: const Offset(0, 0.12), end: Offset.zero).animate(a),
+        child: w,
+      ),
+    ),
+    child: KeyedSubtree(key: key, child: child),
+  );
+
   // ================================================================ ir a una diapositiva
 
   /// El número de la diapositiva: al tocarlo sale la lista para saltar a otra.
   Widget _jumpTarget(Widget child) => Semantics(
-        button: true,
-        label: t('Ir a otra diapositiva', 'Go to another slide'),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(Rad.s),
-          onTap: _openSlideList,
-          child: child,
-        ),
-      );
+    button: true,
+    label: t('Ir a otra diapositiva', 'Go to another slide'),
+    child: InkWell(borderRadius: BorderRadius.circular(Rad.s), onTap: _openSlideList, child: child),
+  );
 
   void _openSlideList() {
     final d = c.deck;
@@ -600,169 +825,130 @@ class _RemotePageState extends State<RemotePage> {
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(Sp.page, 0, Sp.page, Sp.s),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(t('Ir a la diapositiva', 'Go to slide'), style: Txt.title(26)),
-                if (!c.slideIsExact) ...[
-                  const SizedBox(height: Sp.xs),
-                  Text(
-                    t('El teléfono escribe el número y Enter, como en PowerPoint o Impress.',
-                        'The phone types the number and Enter, as in PowerPoint or Impress.'),
-                    style: Txt.text(14, color: Pal.muted, height: 1.35),
-                  ),
-                ],
-              ]),
-            ),
-            Flexible(
-              child: ListView.builder(
-                controller: ScrollController(initialScrollOffset: ((current - 2) * rowH).clamp(0, double.infinity)),
-                itemExtent: rowH,
-                itemCount: total,
-                itemBuilder: (ctx, i) {
-                  final s = d?[i];
-                  final here = i == current;
-                  return Semantics(
-                    selected: here,
-                    button: true,
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        if (d != null) {
-                          c.goToSlide(i);
-                        } else {
-                          c.goToPage(i + 1);
-                        }
-                      },
-                      child: Container(
-                        color: here ? Pal.raise : null,
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.page),
-                        child: Row(children: [
-                          SizedBox(
-                            width: 44,
-                            child: Text((i + 1).toString().padLeft(2, '0'),
-                                style: Txt.digits(17, color: here ? Pal.accent : Pal.muted)),
-                          ),
-                          const SizedBox(width: Sp.m),
-                          Expanded(
-                            child: Text(
-                              s?.title.isNotEmpty == true ? s!.title : '${t('Diapositiva', 'Slide')} ${s?.number ?? i + 1}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Txt.text(16, weight: here ? FontWeight.w700 : FontWeight.w500, height: 1.25),
-                            ),
-                          ),
-                          if (here) Dot(Pal.accent),
-                        ]),
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.82),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Sp.page, 0, Sp.page, Sp.s),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t('Ir a la diapositiva', 'Go to slide'), style: Txt.title(26)),
+                    if (!c.slideIsExact) ...[
+                      const SizedBox(height: Sp.xs),
+                      Text(
+                        t(
+                          'El teléfono escribe el número y Enter, como en PowerPoint o Impress.',
+                          'The phone types the number and Enter, as in PowerPoint or Impress.',
+                        ),
+                        style: Txt.text(14, color: Pal.muted, height: 1.35),
                       ),
-                    ),
-                  );
-                },
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ]),
+              // Sin transmitir el teléfono cuenta las pulsaciones: aquí se corrige si se desfasó
+              if (d != null && !c.slideIsExact)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Sp.page, Sp.xs, Sp.s, Sp.s),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          t(
+                            '¿Las notas se desfasaron? Ajústalas sin mover la PC:',
+                            'Notes out of step? Adjust them without moving the computer:',
+                          ),
+                          style: Txt.text(13.5, color: Pal.muted, height: 1.35),
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          c.adjustSlide(-1);
+                        },
+                        tooltip: t('Diapositiva anterior en las notas', 'Previous slide in the notes'),
+                        icon: const Icon(Icons.remove_rounded),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          c.adjustSlide(1);
+                        },
+                        tooltip: t('Diapositiva siguiente en las notas', 'Next slide in the notes'),
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              const Divider(),
+              Flexible(
+                child: ListView.builder(
+                  controller: ScrollController(initialScrollOffset: ((current - 2) * rowH).clamp(0, double.infinity)),
+                  itemExtent: rowH,
+                  itemCount: total,
+                  itemBuilder: (ctx, i) {
+                    final s = d?[i];
+                    final here = i == current;
+                    return Semantics(
+                      selected: here,
+                      button: true,
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          if (d != null) {
+                            c.goToSlide(i);
+                          } else {
+                            c.goToPage(i + 1);
+                          }
+                        },
+                        child: Container(
+                          color: here ? Pal.raise : null,
+                          padding: const EdgeInsets.symmetric(horizontal: Sp.page),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 44,
+                                child: Text(
+                                  (i + 1).toString().padLeft(2, '0'),
+                                  style: Txt.digits(17, color: here ? Pal.accent : Pal.muted),
+                                ),
+                              ),
+                              const SizedBox(width: Sp.m),
+                              Expanded(
+                                child: Text(
+                                  s?.title.isNotEmpty == true
+                                      ? s!.title
+                                      : '${t('Diapositiva', 'Slide')} ${s?.number ?? i + 1}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Txt.text(16, weight: here ? FontWeight.w700 : FontWeight.w500, height: 1.25),
+                                ),
+                              ),
+                              if (s != null && s.notes.trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: Sp.s),
+                                  child: Icon(Icons.notes_rounded, size: 16, color: Pal.faint),
+                                ),
+                              if (here) ...[const SizedBox(width: Sp.s), Dot(Pal.accent)],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Cambio suave del número y el título al pasar de diapositiva.
-  Widget _swap(Key key, Widget child) => AnimatedSwitcher(
-        duration: Mo.of(context, Mo.fast),
-        layoutBuilder: (current, previous) =>
-            Stack(alignment: Alignment.bottomLeft, children: [...previous, if (current != null) current]),
-        transitionBuilder: (w, a) => FadeTransition(
-          opacity: a,
-          child: SlideTransition(
-            position: Tween(begin: const Offset(0, 0.12), end: Offset.zero).animate(a),
-            child: w,
-          ),
-        ),
-        child: KeyedSubtree(key: key, child: child),
-      );
-
-  Widget _iconAction(IconData icon, String tooltip, VoidCallback onTap) => IconButton(
-        onPressed: onTap,
-        tooltip: tooltip,
-        style: IconButton.styleFrom(minimumSize: const Size(44, 44), padding: EdgeInsets.zero),
-        icon: Icon(icon, size: 21, color: Pal.muted),
-      );
-
-  // ================================================================ botones de cambiar diapositiva
-
-  /// Botón "anterior" chico a la izquierda y "siguiente" ancho: el pulgar cae en "siguiente".
-  Widget _dockRow({bool compact = false}) {
-    final dim = !c.canSend;
-    return AnimatedOpacity(
-      duration: Mo.of(context, Mo.med),
-      opacity: dim ? 0.45 : 1,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SizedBox(
-          width: compact ? 72 : 92,
-          child: _Pad(
-            primary: false,
-            label: t('Anterior', 'Previous'),
-            icon: Icons.chevron_left_rounded,
-            hint: c.invert ? 'VOL +' : 'VOL −',
-            pulse: c.pulsePrev,
-            layout: _PadLayout.icon,
-            onTap: () => c.send(forward: false),
-          ),
-        ),
-        const SizedBox(width: Sp.s + 2),
-        Expanded(
-          child: _Pad(
-            primary: true,
-            label: t('Siguiente', 'Next'),
-            icon: Icons.arrow_forward_rounded,
-            hint: c.invert ? 'VOL −' : 'VOL +',
-            pulse: c.pulseNext,
-            layout: compact ? _PadLayout.compact : _PadLayout.wide,
-            onTap: () => c.send(forward: true),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  /// Sin notas: botones grandes, uno arriba del otro.
-  Widget _dockColumn() {
-    final dim = !c.canSend;
-    return AnimatedOpacity(
-      duration: Mo.of(context, Mo.med),
-      opacity: dim ? 0.45 : 1,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-          flex: 2,
-          child: _Pad(
-            primary: true,
-            label: t('Siguiente', 'Next'),
-            icon: Icons.arrow_forward_rounded,
-            hint: c.invert ? 'VOL −' : 'VOL +',
-            pulse: c.pulseNext,
-            layout: _PadLayout.big,
-            onTap: () => c.send(forward: true),
-          ),
-        ),
-        const SizedBox(height: Sp.s + 2),
-        Expanded(
-          child: _Pad(
-            primary: false,
-            label: t('Anterior', 'Previous'),
-            icon: Icons.chevron_left_rounded,
-            hint: c.invert ? 'VOL +' : 'VOL −',
-            pulse: c.pulsePrev,
-            layout: _PadLayout.compact,
-            onTap: () => c.send(forward: false),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  // ================================================================ hoja "Conexión"
+  // ================================================================ hojas y pantallas
 
   void _openConnection() {
     HapticFeedback.selectionClick();
@@ -774,16 +960,27 @@ class _RemotePageState extends State<RemotePage> {
         listenable: Listenable.merge([c, I18n.current]),
         builder: (ctx, _) => SafeArea(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.86),
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.88),
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(Sp.page, 0, Sp.page, Sp.xl),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-                Text(t('Conexión', 'Connection'), style: Txt.title(26)),
-                const SizedBox(height: Sp.l),
-                _modeSelector(),
-                const SizedBox(height: Sp.xl),
-                _modeContent(),
-              ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(t('Conexión', 'Connection'), style: Txt.title(26)),
+                  const SizedBox(height: Sp.l),
+                  ModePicker(c: c, compact: true),
+                  const SizedBox(height: Sp.xl),
+                  ConnectionContent(
+                    c: c,
+                    onNudge: _showNudge,
+                    onDraw: () {
+                      Navigator.pop(ctx);
+                      _openDraw();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -791,384 +988,66 @@ class _RemotePageState extends State<RemotePage> {
     );
   }
 
-  Widget _modeContent() => AnimatedSize(
-        duration: Mo.of(context, Mo.med),
-        curve: Mo.curve,
-        alignment: Alignment.topCenter,
-        child: KeyedSubtree(
-          key: ValueKey(c.mode),
-          child: switch (c.mode) {
-            Mode.bluetooth => c.isIOS ? _bleSection() : _hidSection(),
-            Mode.wifi => _wifiSection(),
-            Mode.browser => _browserSection(),
-          },
-        ),
-      );
-
-  Widget _sectionHead(String title, [String? body]) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: Txt.title(26)),
-        if (body != null) ...[
-          const SizedBox(height: Sp.s),
-          Text(body, style: Txt.text(15.5, color: Pal.muted)),
-        ],
-      ]);
-
-  /// Fila de lista con radio: PCs emparejadas o encontradas en la red.
-  Widget _choiceRow({
-    required bool selected,
-    required String title,
-    String? subtitle,
-    bool mono = false,
-    Widget? trailing,
-    required VoidCallback onTap,
-  }) =>
-      Semantics(
-        selected: selected,
-        button: true,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 60),
-            padding: const EdgeInsets.symmetric(vertical: Sp.m),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Pal.rule))),
-            child: Row(children: [
-              AnimatedContainer(
-                duration: Mo.of(context, Mo.fast),
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: selected ? Pal.accent : Pal.faint, width: selected ? 7 : 2),
-                ),
-              ),
-              const SizedBox(width: Sp.l),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(17, weight: FontWeight.w600, height: 1.25)),
-                  if (subtitle != null)
-                    Text(subtitle,
-                        style: mono
-                            ? Txt.digits(12.5, color: Pal.muted, weight: FontWeight.w500)
-                            : Txt.text(13, color: Pal.muted, height: 1.3)),
-                ]),
-              ),
-              if (trailing != null) trailing,
-            ]),
-          ),
-        ),
-      );
-
-  // ---------------------------------------------------------------- Bluetooth (Android)
-
-  Widget _hidSection() {
-    final s = c.btState;
-    if (s == BtState.connected) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _sectionHead(
-          c.btDeviceName ?? 'PC',
-          t('Conectado como teclado Bluetooth. Los botones de volumen ya cambian la diapositiva.',
-              'Connected as a Bluetooth keyboard. The volume buttons now change the slide.'),
-        ),
-        const SizedBox(height: Sp.l),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: PillButton(t('Desconectar', 'Disconnect'), onTap: c.disconnectBluetooth, dense: true),
-        ),
-      ]);
-    }
-    if (s == BtState.unavailable || s == BtState.off || s == BtState.noPermission) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _sectionHead(
-          switch (s) {
-            BtState.off => t('Bluetooth apagado', 'Bluetooth is off'),
-            BtState.noPermission => t('Falta un permiso', 'A permission is missing'),
-            _ => t('No disponible', 'Not available'),
-          },
-          switch (s) {
-            BtState.off => t('Actívalo en el teléfono y toca Reintentar.', 'Turn it on on the phone and tap Retry.'),
-            BtState.noPermission => t('Zlide necesita el permiso de “Dispositivos cercanos” para funcionar como teclado.',
-                'Zlide needs the “Nearby devices” permission to work as a keyboard.'),
-            _ => c.btMessage ??
-                t('El control Bluetooth no está disponible en este teléfono. Usa “Transmitir desde PC” o “Transmitir desde móvil”.',
-                    'Bluetooth control is not available on this phone. Use “Stream from PC” or “Stream from phone”.'),
-          },
-        ),
-        if (s != BtState.unavailable) ...[
-          const SizedBox(height: Sp.l),
-          PillButton(t('Reintentar', 'Retry'), primary: true, onTap: c.retryBluetooth),
-        ],
-      ]);
-    }
-    final connecting = s == BtState.connecting;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _sectionHead(
-        t('Conecta tu PC', 'Connect your computer'),
-        t('El teléfono funciona como teclado Bluetooth. No hay que instalar nada en la PC (Windows, Mac, Linux o tablet).',
-            'The phone works as a Bluetooth keyboard. Nothing to install on the computer (Windows, Mac, Linux or tablet).'),
-      ),
-      const SizedBox(height: Sp.m),
-      DecoratedBox(
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: Pal.rule))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (c.bonded.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Sp.l),
-              child: Text(
-                t('Ninguna PC emparejada todavía. Toca “Emparejar nueva” y, en la PC, agrega el teléfono desde los ajustes de Bluetooth.',
-                    'No paired computer yet. Tap “Pair new” and add the phone from the computer’s Bluetooth settings.'),
-                style: Txt.text(15, color: Pal.muted),
-              ),
-            ),
-          for (final d in c.bonded)
-            _choiceRow(
-              selected: d.address == c.selectedAddress,
-              title: d.name,
-              subtitle: t('Emparejada', 'Paired'),
-              onTap: () => c.selectDevice(d.address),
-            ),
-        ]),
-      ),
-      const SizedBox(height: Sp.l),
-      ButtonPair(
-        PillButton(
-          connecting ? t('Conectando…', 'Connecting…') : t('Conectar', 'Connect'),
-          primary: true,
-          onTap: connecting || c.selectedAddress == null ? null : c.connectSelected,
-        ),
-        PillButton(t('Emparejar nueva', 'Pair new'), onTap: c.pairNew),
-      ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: c.refreshBonded,
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: Text(t('Actualizar lista', 'Refresh list')),
-        ),
-      ),
-    ]);
-  }
-
-  // ---------------------------------------------------------------- Bluetooth (iPhone)
-
-  Widget _bleSection() {
-    final connected = c.btState == BtState.connected;
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(
-        child: _sectionHead(
-          connected ? t('Conectado a la PC', 'Connected to the computer') : t('Buscando la PC…', 'Looking for the computer…'),
-          connected
-              ? t('Los botones de volumen ya cambian la diapositiva.', 'The volume buttons now change the slide.')
-              : t('Abre Zlide para escritorio en la PC; se conecta sola. En iPhone, el Bluetooth necesita esa app.',
-                  'Open Zlide for desktop on the computer; it connects by itself. On iPhone, Bluetooth needs that app.'),
-        ),
-      ),
-      if (!connected)
-        const Padding(
-          padding: EdgeInsets.only(left: Sp.m, top: Sp.s),
-          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2)),
-        ),
-    ]);
-  }
-
-  // ---------------------------------------------------------------- Transmitir desde PC
-
-  Widget _wifiSection() {
-    final found = c.wifi.found;
-    final target = c.wifi.target;
-    final all = [
-      ...found,
-      if (target != null && found.every((p) => p.name != target.name)) target,
-    ];
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-          child: _sectionHead(
-            t('Elige tu PC', 'Choose your computer'),
-            t('Abre Zlide para escritorio en la PC y usa la misma red WiFi. Desde ahí también puedes proyectar y dibujar.',
-                'Open Zlide for desktop on the computer and use the same WiFi network. From there you can also present and draw.'),
-          ),
-        ),
-        if (c.wifi.searching)
-          const Padding(
-            padding: EdgeInsets.only(left: Sp.m, top: Sp.s),
-            child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-      ]),
-      const SizedBox(height: Sp.m),
-      DecoratedBox(
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: Pal.rule))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (all.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Sp.l),
-              child: Text(t('Todavía no aparece ninguna PC.', 'No computer has shown up yet.'),
-                  style: Txt.text(15, color: Pal.muted)),
-            ),
-          for (final pc in all)
-            _choiceRow(
-              selected: target?.name == pc.name,
-              title: pc.name,
-              subtitle: '${pc.host}:${pc.port}',
-              mono: true,
-              trailing: target?.name == pc.name ? Dot(c.wifi.online ? Pal.ok : Pal.busy) : null,
-              onTap: () => c.selectPc(pc),
-            ),
-        ]),
-      ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: _manualIpDialog,
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: Text(t('Agregar por IP', 'Add by IP')),
-        ),
-      ),
-    ]);
-  }
-
-  Future<void> _manualIpDialog() async {
-    final ip = TextEditingController(text: c.wifi.target?.manual == true ? c.wifi.target!.host : '');
-    final port = TextEditingController(text: '$kUdpPort');
-    final ok = await showDialog<bool>(
+  /// Modo una mano: lo que estaba arriba (conexión, ajustes, cronómetro), en una hoja abajo.
+  void _openMore() {
+    showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(t('Agregar PC por IP', 'Add computer by IP')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(t('La IP aparece en la app de escritorio.', 'The IP is shown in the desktop app.')),
-          const SizedBox(height: Sp.l),
-          TextField(
-            controller: ip,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: t('IP de la PC', 'Computer IP'), hintText: '192.168.1.50'),
-            style: Txt.digits(17, weight: FontWeight.w500),
-          ),
-          const SizedBox(height: Sp.m),
-          TextField(
-            controller: port,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: t('Puerto', 'Port')),
-            style: Txt.digits(17, weight: FontWeight.w500),
-          ),
-        ]),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(foregroundColor: Pal.muted),
-            child: Text(t('Cancelar', 'Cancel')),
-          ),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(t('Agregar', 'Add'))),
-        ],
+      showDragHandle: true,
+      builder: (ctx) => ListenableBuilder(
+        listenable: Listenable.merge([c, c.timer]),
+        builder: (ctx, _) {
+          final tm = c.timer;
+          final s = c.status;
+          Widget row(IconData icon, String title, String? sub, VoidCallback onTap) => ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: Sp.page),
+            leading: Icon(icon),
+            title: Text(title),
+            subtitle: sub == null ? null : Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () {
+              Navigator.pop(ctx);
+              onTap();
+            },
+          );
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                row(
+                  Icons.link_rounded,
+                  t('Conexión', 'Connection'),
+                  '${s.title} · ${modeName(c.mode)}',
+                  _openConnection,
+                ),
+                row(
+                  tm.running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  tm.running ? t('Pausar cronómetro', 'Pause timer') : t('Iniciar cronómetro', 'Start timer'),
+                  tm.label,
+                  tm.toggle,
+                ),
+                if (!tm.running && !tm.isZero)
+                  row(Icons.restart_alt_rounded, t('Reiniciar cronómetro', 'Reset timer'), null, tm.reset),
+                row(
+                  Icons.flag_outlined,
+                  t('Tiempo objetivo', 'Target time'),
+                  tm.target == null ? t('Sin objetivo', 'No target') : '${tm.target!.inMinutes} min',
+                  () => showTargetPicker(context, tm),
+                ),
+                row(Icons.settings_outlined, t('Ajustes', 'Settings'), null, _openSettings),
+                const SizedBox(height: Sp.s),
+              ],
+            ),
+          );
+        },
       ),
     );
-    final host = ip.text.trim();
-    if (ok == true && host.isNotEmpty) {
-      await c.selectPc(PcEntry(
-        name: host,
-        host: host,
-        port: int.tryParse(port.text.trim()) ?? kUdpPort,
-        manual: true,
-      ));
-    }
   }
 
-  // ---------------------------------------------------------------- Transmitir desde móvil
-
-  Widget _browserSection() {
-    final b = c.browser;
-    if (c.converting) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _sectionHead(
-          t('Convirtiendo a PDF…', 'Converting to PDF…'),
-          t('Se hace en el teléfono, sin internet. La primera vez tarda más.',
-              'Done on the phone, offline. The first time takes longer.'),
-        ),
-        const SizedBox(height: Sp.l),
-        const LinearProgressIndicator(minHeight: 4, borderRadius: BorderRadius.all(Radius.circular(2))),
-        if (c.convertingName != null) ...[
-          const SizedBox(height: Sp.s),
-          Text(c.convertingName!, maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(14, color: Pal.muted)),
-        ],
-      ]);
-    }
-    if (!b.hasPdf) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _sectionHead(
-          t('Proyecta desde el teléfono', 'Present from the phone'),
-          t('Elige tu presentación (PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} o PDF) y ábrela en el navegador '
-              'de la PC con la dirección que te daremos. No hay que instalar nada. Con .pptx u .odp también verás tus notas.',
-              'Pick your presentation (PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} or PDF) and open it in the '
-              'computer’s browser with the address we’ll give you. Nothing to install. With .pptx or .odp you’ll also see your notes.'),
-        ),
-        const SizedBox(height: Sp.l),
-        PillButton(t('Elegir presentación', 'Choose presentation'),
-            primary: true, icon: Icons.slideshow_rounded, onTap: c.pickPresentation),
-      ]);
-    }
-    final url = b.urls.isNotEmpty ? b.urls.first.replaceFirst('http://', '') : null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(t('Abre esta dirección en la PC', 'Open this address on the computer'), style: Txt.title(24)),
-      const SizedBox(height: Sp.m),
-      if (url == null)
-        Text(t('Conéctate a una red WiFi (o activa el punto de acceso del teléfono).',
-                'Connect to a WiFi network (or turn on the phone’s hotspot).'),
-            style: Txt.text(15.5, color: Pal.muted))
-      else
-        Semantics(
-          button: true,
-          label: t('Copiar dirección', 'Copy address'),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(Rad.s),
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: 'http://$url'));
-              _showNudge(t('Dirección copiada', 'Address copied'));
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: Sp.xs),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(url, style: Txt.digits(32, color: Pal.accent)),
-                ),
-                const SizedBox(height: Sp.xs),
-                Text(t('Toca para copiar · misma red WiFi', 'Tap to copy · same WiFi network'),
-                    style: Txt.text(13, color: Pal.muted)),
-              ]),
-            ),
-          ),
-        ),
-      if (b.urls.length > 1)
-        Padding(
-          padding: const EdgeInsets.only(top: Sp.xs),
-          child: Text('${t('Otras', 'Others')}: ${b.urls.skip(1).map((u) => u.replaceFirst('http://', '')).join('  ·  ')}',
-              style: Txt.digits(11.5, color: Pal.muted, weight: FontWeight.w500)),
-        ),
-      const SizedBox(height: Sp.l),
-      Container(
-        padding: const EdgeInsets.only(top: Sp.s),
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: Pal.rule))),
-        child: Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(b.pdfName ?? t('presentación', 'presentation'),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(16, weight: FontWeight.w600, height: 1.3)),
-              Text(
-                [
-                  if (b.total > 0) t('${b.total} diapositivas', '${b.total} slides'),
-                  c.deck != null ? t('con notas', 'with notes') : t('sin notas', 'no notes'),
-                ].join(' · '),
-                style: Txt.text(13, color: Pal.muted, height: 1.3),
-              ),
-            ]),
-          ),
-          TextButton(onPressed: c.pickPresentation, child: Text(t('Cambiar', 'Change'))),
-        ]),
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPage(c: c, modeName: modeName(c.mode)),
       ),
-      const SizedBox(height: Sp.s),
-      PillButton(t('Dibujar sobre la diapositiva', 'Draw on the slide'), icon: Icons.draw_rounded, onTap: _openDraw),
-    ]);
+    );
   }
 
   void _openDraw() {
@@ -1177,433 +1056,10 @@ class _RemotePageState extends State<RemotePage> {
       _showNudge(t('Conéctate a la PC primero', 'Connect to the computer first'));
       return;
     }
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => wifiUri != null ? DrawPage.wifi(c: c, uri: wifiUri) : DrawPage(c: c),
-    ));
-  }
-
-  // ================================================================ ajustes
-
-  void _openSettings() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => ListenableBuilder(
-          listenable: Listenable.merge([c, c.timer, I18n.current]),
-          builder: (ctx, _) => SafeArea(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.88),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(Sp.page, 0, Sp.page, Sp.xl),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-                  Text(t('Ajustes', 'Settings'), style: Txt.title(26)),
-                  const SizedBox(height: Sp.l),
-                  Caption(t('Botones', 'Buttons')),
-                  _switch(t('Invertir botones', 'Swap buttons'), t('Volumen − avanza', 'Volume − goes forward'), c.invert,
-                      c.setInvert),
-                  _switch(t('Usar flechas ← →', 'Use arrow keys ← →'),
-                      t('Si tu programa no responde a AvPág/RePág', 'If your app ignores Page Down/Page Up'), c.arrows, c.setArrows),
-                  const SizedBox(height: Sp.xl),
-                  Caption(t('Cronómetro', 'Timer')),
-                  ListTile(
-                    title: Text(t('Tiempo objetivo', 'Target time')),
-                    subtitle: Text(c.timer.target == null
-                        ? t('Sin objetivo · también manteniendo presionado el cronómetro',
-                            'No target · also by holding down the timer')
-                        : '${c.timer.target!.inMinutes} min · ${c.timer.alertsSummary()}'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => showTargetPicker(ctx, c.timer),
-                  ),
-                  const SizedBox(height: Sp.m),
-                  _labeled(
-                    t('Fuerza de la vibración', 'Vibration strength'),
-                    Row(children: [
-                      Text(t('Suave', 'Soft'), style: Txt.text(14, color: Pal.muted)),
-                      Expanded(
-                        child: Slider(
-                          value: c.timer.vibe,
-                          onChanged: c.timer.setVibe,
-                          onChangeEnd: (_) => c.timer.previewVibe(),
-                        ),
-                      ),
-                      Text(t('Fuerte', 'Strong'), style: Txt.text(14, color: Pal.muted)),
-                    ]),
-                  ),
-                  const SizedBox(height: Sp.m),
-                  Row(children: [
-                    Expanded(child: Text(t('Avisos', 'Alerts'), style: Txt.text(15, weight: FontWeight.w600))),
-                    TextButton(onPressed: c.timer.resetAlerts, child: Text(t('Restablecer', 'Reset'))),
-                  ]),
-                  Text(t('Cuándo vibra y cuántas veces. El cronómetro pasa a ámbar en el primero y a rojo en el segundo.',
-                          'When it vibrates and how many times. The timer turns amber at the first and red at the second.'),
-                      style: Txt.text(14, color: Pal.muted)),
-                  const SizedBox(height: Sp.s),
-                  for (var i = 0; i < c.timer.alerts.length; i++) _alertRow(i),
-                  const SizedBox(height: Sp.xl),
-                  Caption(t('Apariencia', 'Appearance')),
-                  _labeled(
-                    t('Tema', 'Theme'),
-                    Segmented<ThemePref>(
-                      values: ThemePref.values,
-                      labels: [t('Sistema', 'System'), t('Claro', 'Light'), t('Oscuro', 'Dark')],
-                      selected: AppTheme.pref,
-                      onChanged: AppTheme.setPref,
-                      accent: true,
-                    ),
-                  ),
-                  const SizedBox(height: Sp.m),
-                  _labeled(
-                    t('Idioma', 'Language'),
-                    Segmented<LangPref>(
-                      values: LangPref.values,
-                      labels: [t('Sistema', 'System'), 'Español', 'English'],
-                      selected: I18n.pref,
-                      onChanged: (p) {
-                        I18n.setPref(p);
-                        c.languageChanged();
-                      },
-                      accent: true,
-                    ),
-                  ),
-                  const SizedBox(height: Sp.xl),
-                  Caption('${t('Notas del presentador', 'Speaker notes')} · ${_modeName(c.mode)}'),
-                  ..._notesSettings(ctx, setSheet),
-                ]),
-              ),
-            ),
-          ),
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => wifiUri != null ? DrawPage.wifi(c: c, uri: wifiUri) : DrawPage(c: c),
       ),
     );
-  }
-
-  List<Widget> _notesSettings(BuildContext ctx, StateSetter setSheet) {
-    if (c.deck == null) {
-      return [
-        Text(
-          c.mode == Mode.wifi
-              ? t('Elige la presentación en la app de la PC, o un archivo aquí.',
-                  'Choose the presentation in the desktop app, or a file here.')
-              : t('Cada modo guarda sus propias notas.', 'Each mode keeps its own notes.'),
-          style: Txt.text(14, color: Pal.muted),
-        ),
-        const SizedBox(height: Sp.m),
-        PillButton(t('Elegir archivo (.pptx, .odp)', 'Choose file (.pptx, .odp)'), icon: Icons.sticky_note_2_outlined, onTap: () {
-          Navigator.pop(ctx);
-          c.pickNotes();
-        }),
-      ];
-    }
-    void font(double d) {
-      setState(() => _notesFont = (_notesFont + d).clamp(15, 34));
-      setSheet(() {});
-    }
-
-    return [
-      ListTile(
-        leading: Icon(c.notesFromPc ? Icons.computer_rounded : Icons.description_outlined),
-        title: Text(c.deckName ?? t('presentación', 'presentation'), maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(c.notesFromPc
-            ? t('Vienen de la app de la PC. Para cambiarlas, elige otra presentación allá.',
-                'They come from the desktop app. To change them, choose another presentation there.')
-            : t('${c.deck!.length} diapositivas', '${c.deck!.length} slides')),
-        trailing: c.notesFromPc
-            ? null
-            : TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  c.pickNotes();
-                },
-                child: Text(t('Cambiar', 'Change')),
-              ),
-      ),
-      const Divider(),
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: Sp.s),
-        child: Row(children: [
-          Expanded(child: Text(t('Tamaño del texto', 'Text size'), style: Txt.text(16, weight: FontWeight.w600))),
-          IconButton(onPressed: () => font(-2), icon: const Icon(Icons.text_decrease_rounded), tooltip: t('Más chico', 'Smaller')),
-          SizedBox(
-            width: 34,
-            child: Text('${_notesFont.round()}', textAlign: TextAlign.center, style: Txt.digits(15, color: Pal.muted)),
-          ),
-          IconButton(onPressed: () => font(2), icon: const Icon(Icons.text_increase_rounded), tooltip: t('Más grande', 'Larger')),
-        ]),
-      ),
-      Text(t('Así se ven tus notas.', 'This is how your notes look.'), style: Txt.text(_notesFont, height: 1.4)),
-      const SizedBox(height: Sp.l),
-      Wrap(spacing: Sp.s, runSpacing: Sp.s, children: [
-        PillButton(t('Volver a la diapositiva 1', 'Back to slide 1'), dense: true, onTap: c.restartNotes),
-        if (!c.notesFromPc)
-          PillButton(t('Quitar notas', 'Remove notes'), dense: true, onTap: () {
-            Navigator.pop(ctx);
-            c.clearNotes();
-          }),
-      ]),
-      const SizedBox(height: Sp.m),
-      Text(
-        t('Con PowerPoint o Impress el teléfono cuenta las pulsaciones (incluidas las animaciones); si se desfasa, '
-            'corrígelo con − / + junto al número. Al transmitir (desde la PC o desde el móvil) se sincroniza solo.',
-            'With PowerPoint or Impress the phone counts the presses (animations included); if it gets out of step, '
-            'fix it with − / + next to the number. When streaming (from the PC or the phone) it syncs by itself.'),
-        style: Txt.text(13, color: Pal.muted, height: 1.4),
-      ),
-    ];
-  }
-
-  /// Aviso [i] del cronómetro: minutos antes del final (el último es al terminar) y vibraciones.
-  Widget _alertRow(int i) {
-    final tm = c.timer;
-    final a = tm.alerts[i];
-    final last = i == tm.alerts.length - 1;
-    final m = a.left.inMinutes;
-    final (lo, hi) = tm.alertRange(i);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Sp.m),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(
-            child: Text(last ? t('Al terminar', 'When time is up') : t('Quedan $m min', '$m min left'),
-                style: Txt.text(15)),
-          ),
-          if (!last) ...[
-            IconButton(
-              onPressed: m > lo ? () => tm.setAlert(i, minutes: m - 1) : null,
-              tooltip: t('Un minuto menos', 'One minute less'),
-              icon: const Icon(Icons.remove_rounded),
-            ),
-            IconButton(
-              onPressed: m < hi ? () => tm.setAlert(i, minutes: m + 1) : null,
-              tooltip: t('Un minuto más', 'One minute more'),
-              icon: const Icon(Icons.add_rounded),
-            ),
-          ],
-        ]),
-        Segmented<int>(
-          values: const [0, 1, 2, 3],
-          labels: [t('No vibra', 'Off'), t('1 vez', 'Once'), t('2 veces', 'Twice'), t('3 veces', '3 times')],
-          selected: a.pulses,
-          onChanged: (n) {
-            tm.setAlert(i, pulses: n);
-            tm.previewVibe(n);
-          },
-          accent: true,
-        ),
-      ]),
-    );
-  }
-
-  Widget _labeled(String label, Widget child) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: Sp.s),
-          child: Text(label, style: Txt.text(15, weight: FontWeight.w600)),
-        ),
-        child,
-      ]);
-
-  /// Nombre del modo en una línea (cada modo tiene sus propias notas).
-  static String _modeName(Mode m) => switch (m) {
-        Mode.bluetooth => t('Control Bluetooth', 'Bluetooth control'),
-        Mode.wifi => t('Transmitir desde PC', 'Stream from PC'),
-        Mode.browser => t('Transmitir desde móvil', 'Stream from phone'),
-      };
-
-  Widget _switch(String title, String sub, bool value, ValueChanged<bool> onChanged) => SwitchListTile(
-        value: value,
-        onChanged: onChanged,
-        title: Text(title),
-        subtitle: Text(sub),
-      );
-}
-
-// ==================================================================== piezas
-
-/// Progreso de la presentación: un segmento por diapositiva (o una barra si son muchas).
-class _Progress extends StatelessWidget {
-  const _Progress({required this.current, required this.total});
-  final int current;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    if (total <= 0) return const SizedBox(height: 4);
-    if (total > 40) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: LinearProgressIndicator(value: (current + 1) / total, minHeight: 4),
-      );
-    }
-    return Semantics(
-      label: t('Diapositiva ${current + 1} de $total', 'Slide ${current + 1} of $total'),
-      child: Row(children: [
-        for (var i = 0; i < total; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          Expanded(
-            child: AnimatedContainer(
-              duration: Mo.of(context, Mo.med),
-              height: i == current ? 5 : 4,
-              decoration: BoxDecoration(
-                color: i <= current ? Pal.accent : Pal.rule,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ],
-      ]),
-    );
-  }
-}
-
-enum _PadLayout {
-  /// Solo el ícono (botón "anterior" junto a "siguiente").
-  icon,
-
-  /// Una línea: ícono y texto (notas expandidas, preparando).
-  compact,
-
-  /// Texto a la izquierda, flecha a la derecha (debajo de las notas).
-  wide,
-
-  /// Grande (sin notas).
-  big,
-}
-
-/// Botón de cambiar diapositiva. También se anima cuando la pulsación viene del botón de volumen.
-class _Pad extends StatefulWidget {
-  const _Pad({
-    required this.primary,
-    required this.label,
-    required this.icon,
-    required this.hint,
-    required this.pulse,
-    required this.onTap,
-    required this.layout,
-  });
-
-  final bool primary;
-  final String label;
-  final IconData icon;
-  final String hint;
-  final ValueNotifier<int> pulse;
-  final VoidCallback onTap;
-  final _PadLayout layout;
-
-  @override
-  State<_Pad> createState() => _PadState();
-}
-
-class _PadState extends State<_Pad> with SingleTickerProviderStateMixin {
-  late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
-
-  @override
-  void initState() {
-    super.initState();
-    widget.pulse.addListener(_onPulse);
-  }
-
-  @override
-  void didUpdateWidget(_Pad old) {
-    super.didUpdateWidget(old);
-    if (old.pulse != widget.pulse) {
-      old.pulse.removeListener(_onPulse);
-      widget.pulse.addListener(_onPulse);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.pulse.removeListener(_onPulse);
-    _anim.dispose();
-    super.dispose();
-  }
-
-  void _onPulse() {
-    HapticFeedback.selectionClick();
-    if (MediaQuery.maybeDisableAnimationsOf(context) == true) return;
-    _anim.forward(from: 0);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = widget.primary ? Pal.onAccent : Pal.ink;
-    final bg = widget.primary ? Pal.accent : Pal.raise;
-    final radius = BorderRadius.circular(widget.layout == _PadLayout.big ? Rad.xl + 4 : Rad.xl - 2);
-    return Semantics(
-      button: true,
-      label: '${widget.label} (${widget.hint})',
-      excludeSemantics: true,
-      child: AnimatedBuilder(
-        animation: _anim,
-        builder: (context, child) {
-          // 0 → 1: se hunde un poco y regresa, con un destello
-          final v = _anim.value;
-          final k = v < 0.35 ? v / 0.35 : (1 - v) / 0.65;
-          return Transform.scale(
-            scale: 1 - 0.035 * k,
-            child: Stack(fit: StackFit.expand, children: [
-              child!,
-              IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: (widget.primary ? Colors.black : Pal.ink).withValues(alpha: 0.16 * k),
-                    borderRadius: radius,
-                  ),
-                ),
-              ),
-            ]),
-          );
-        },
-        child: Material(
-          color: bg,
-          borderRadius: radius,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: widget.onTap, child: _content(fg)),
-        ),
-      ),
-    );
-  }
-
-  Widget _content(Color fg) {
-    final hint = Text(widget.hint, style: Txt.digits(12, color: fg.withValues(alpha: 0.75), weight: FontWeight.w500));
-    switch (widget.layout) {
-      case _PadLayout.icon:
-        return Center(child: Icon(widget.icon, size: 34, color: fg));
-      case _PadLayout.compact:
-        return Center(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Sp.l),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(widget.icon, size: 26, color: fg),
-                const SizedBox(width: Sp.s),
-                Text(widget.label, style: Txt.title(19, color: fg)),
-              ]),
-            ),
-          ),
-        );
-      case _PadLayout.wide:
-      case _PadLayout.big:
-        final big = widget.layout == _PadLayout.big;
-        return Padding(
-          padding: EdgeInsets.symmetric(horizontal: big ? Sp.xxl - 4 : Sp.xl),
-          child: Row(children: [
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  Text(widget.label, style: Txt.title(big ? 36 : 26, color: fg)),
-                  const SizedBox(height: 2),
-                  hint,
-                ]),
-              ),
-            ),
-            Icon(widget.icon, size: big ? 48 : 36, color: fg),
-          ]),
-        );
-    }
   }
 }

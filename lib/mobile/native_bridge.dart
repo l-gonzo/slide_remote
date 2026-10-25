@@ -38,6 +38,16 @@ abstract final class NativeBridge {
   /// Idioma de los mensajes que genera la parte nativa ('es' o 'en').
   static Future<void> setLanguage(String lang) => call('setLanguage', {'lang': lang});
 
+  // ---------------------------------------------------------------- No molestar
+
+  /// 'granted', 'denied' (falta dar el acceso en Ajustes) o 'unsupported' (iOS).
+  static Future<String> dndStatus() async => await call<String>('dndStatus') ?? 'unsupported';
+
+  /// Activa (solo pasan las alarmas) o restaura el modo anterior. Devuelve 'on', 'off' o el estado.
+  static Future<String> setDnd(bool on) async => await call<String>('setDnd', {'enabled': on}) ?? 'unsupported';
+
+  static Future<bool> openDndSettings() async => await call<bool>('openDndSettings') ?? false;
+
   // ---------------------------------------------------------------- Android: teclado HID
 
   static Future<bool> hidSupported() async => await call<bool>('hidSupported') ?? false;
@@ -83,17 +93,20 @@ abstract final class NativeBridge {
     }
   }
 
-  /// Convierte una presentación a PDF dentro del teléfono.
+  /// Convierte una presentación a PDF dentro del teléfono. Con [svgOutput], si se puede
+  /// (Android), también a SVG con animaciones; si no, ese archivo no se crea.
   /// Lanza [PlatformException] con un mensaje legible si falla.
   static Future<void> convertToPdf({
     required String input,
     required String output,
+    String? svgOutput,
     double? aspect,
     int? expected,
   }) =>
       _methods.invokeMethod<void>('convertToPdf', {
         'input': input,
         'output': output,
+        'svgOutput': svgOutput,
         'aspect': aspect,
         'expected': expected,
       });

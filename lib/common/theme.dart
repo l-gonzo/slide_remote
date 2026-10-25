@@ -599,3 +599,38 @@ class Segmented<T> extends StatelessWidget {
         ]),
       );
 }
+
+/// Grupo de filas (ajustes, listas): un rótulo y una superficie redondeada con líneas entre filas.
+class Panel extends StatelessWidget {
+  const Panel({super.key, this.title, required this.children, this.footer});
+  final String? title;
+  final List<Widget> children;
+
+  /// Nota debajo del grupo.
+  final String? footer;
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (title != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.xs, 0, Sp.xs, Sp.s),
+            child: Text(title!.toUpperCase(), style: Txt.caption),
+          ),
+        Material(
+          color: Pal.raise,
+          borderRadius: BorderRadius.circular(Rad.l),
+          clipBehavior: Clip.antiAlias,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) Divider(height: 1, indent: Sp.l, endIndent: Sp.l, color: Pal.bg.withValues(alpha: 0.9)),
+              children[i],
+            ],
+          ]),
+        ),
+        if (footer != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.xs, Sp.s, Sp.xs, 0),
+            child: Text(footer!, style: Txt.text(13, color: Pal.muted, height: 1.4)),
+          ),
+      ]);
+}

@@ -27,8 +27,9 @@ abstract final class Office {
   }
 
   /// Convierte [input] a [format] ('pdf', 'odp'…) dentro de [outDir]. Devuelve el archivo.
+  /// [filter]: filtro de exportación de LibreOffice, si el predeterminado no sirve.
   /// Lanza [FormatException] con un mensaje para el usuario si no se puede.
-  static Future<File> convert(File input, String format, Directory outDir) async {
+  static Future<File> convert(File input, String format, Directory outDir, {String? filter}) async {
     final soffice = await findSoffice();
     if (soffice != null) {
       // Perfil propio: así funciona aunque LibreOffice ya esté abierto
@@ -38,7 +39,7 @@ abstract final class Office {
         '--headless',
         '--norestore',
         '--convert-to',
-        format,
+        filter == null ? format : '$format:$filter',
         '--outdir',
         outDir.path,
         input.path,
@@ -52,13 +53,82 @@ abstract final class Office {
       throw FormatException('${t('LibreOffice no pudo convertir el archivo', 'LibreOffice could not convert the file')} '
           '(${'${r.stderr}'.trim()})');
     }
-    if (Platform.isWindows && format == 'pdf') {
+    if (Platform.isWindows && format == 'pdf' && filter == null) {
       final out = File('${outDir.path}\\presentacion.pdf');
       if (await _powerPointToPdf(input, out)) return out;
     }
     throw FormatException(t(
         'Para proyectar o leer este archivo instala LibreOffice en esta PC (gratis), o elige la presentación en PDF.',
         'To present or read this file install LibreOffice on this computer (free), or choose the presentation as PDF.'));
+  }
+
+  /// Nombre del programa con el que [openSlideshow] abriría [file] (para mostrarlo en la app).
+  static Future<String?> slideshowApp(File file) async => (await _slideshowCommand(file))?.$1;
+
+  /// Abre la presentación a pantalla completa en su programa (PowerPoint, Keynote o LibreOffice
+  /// Impress). Ahí funcionan las animaciones, transiciones, videos y enlaces; el teléfono la
+  /// controla con teclas como siempre. Lanza [FormatException] si no hay con qué abrirla.
+  static Future<String> openSlideshow(File file) async {
+    final cmd = await _slideshowCommand(file);
+    if (cmd == null) {
+      throw FormatException(t(
+          'No se encontró PowerPoint, Keynote ni LibreOffice en esta PC para abrir la presentación.',
+          'PowerPoint, Keynote or LibreOffice was not found on this computer to open the presentation.'));
+    }
+    final (app, exe, args) = cmd;
+    await Process.start(exe, args, mode: ProcessStartMode.detached);
+    return app;
+  }
+
+  /// (programa, ejecutable, argumentos) para presentar [file].
+  static Future<(String, String, List<String>)?> _slideshowCommand(File file) async {
+    final path = file.absolute.path;
+    final ext = path.contains('.') ? path.split('.').last.toLowerCase() : '';
+    String osa(String s) => s.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+    if (Platform.isWindows && ext != 'odp' && ext != 'pdf' && await _windowsHasPowerPoint()) {
+      // `start` busca POWERPNT.EXE en "App Paths"; /S abre directo la presentación
+      return ('PowerPoint', 'cmd', ['/c', 'start', '', 'POWERPNT.EXE', '/S', path]);
+    }
+    if (Platform.isMacOS) {
+      if (ext == 'key' && await Directory('/Applications/Keynote.app').exists()) {
+        return ('Keynote', 'osascript', [
+          '-e', 'tell application "Keynote"',
+          '-e', 'activate',
+          '-e', 'set d to open POSIX file "${osa(path)}"',
+          '-e', 'start d from first slide of d',
+          '-e', 'end tell',
+        ]);
+      }
+      if (ext != 'odp' && ext != 'pdf' && await Directory('/Applications/Microsoft PowerPoint.app').exists()) {
+        return ('PowerPoint', 'osascript', [
+          '-e', 'tell application "Microsoft PowerPoint"',
+          '-e', 'activate',
+          '-e', 'open POSIX file "${osa(path)}"',
+          '-e', 'run slide show slide show settings of active presentation',
+          '-e', 'end tell',
+        ]);
+      }
+    }
+    if (ext != 'pdf') {
+      final soffice = await findSoffice();
+      if (soffice != null) return ('LibreOffice Impress', soffice, ['--norestore', '--show', path]);
+    }
+    // Un PDF (o nada más instalado): el programa predeterminado del sistema
+    if (Platform.isWindows) return (t('el visor de PDF', 'the PDF viewer'), 'cmd', ['/c', 'start', '', path]);
+    if (Platform.isMacOS) return (t('el visor de PDF', 'the PDF viewer'), 'open', [path]);
+    if (ext == 'pdf') return (t('el visor de PDF', 'the PDF viewer'), 'xdg-open', [path]);
+    return null;
+  }
+
+  static Future<bool> _windowsHasPowerPoint() async {
+    try {
+      for (final root in ['HKLM', 'HKCU']) {
+        final r = await Process.run(
+            'reg', ['query', '$root\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\powerpnt.exe', '/ve']);
+        if (r.exitCode == 0) return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   /// Windows con PowerPoint instalado: exportar a PDF por automatización (sin abrir ventanas).

@@ -79,7 +79,31 @@ abstract final class Udp {
   /// en GET /notes. Se manda junto con cada PONG; el teléfono solo descarga si cambió.
   static String notes(int version, int port) => '$prefix NOTES $version $port';
 
-  /// "Proyectar en esta PC": página actual, total (0 0 = no está proyectando) y versión del PDF
-  /// (cambia con cada presentación; el teléfono lo descarga para las miniaturas).
-  static String page(int page, int total, [int version = 0]) => '$prefix PAGE $page $total $version';
+  /// "Proyectar en esta PC": página actual, total (0 0 = no está proyectando), versión del PDF
+  /// (cambia con cada presentación; el teléfono lo descarga para las miniaturas) y en qué
+  /// animación va la diapositiva: [step] de [steps] (-1: no se sabe, la proyección no las tiene).
+  static String page(int page, int total, [int version = 0, int step = 0, int steps = -1]) =>
+      '$prefix PAGE $page $total $version $step $steps';
+
+  /// La PC ya la controla otro teléfono (se manda en vez de NOTES/PAGE mientras se presenta).
+  static const String busy = '$prefix BUSY';
+
+  /// Qué tiene la PC: si hay presentación elegida (0/1) y cómo se presenta ([DeckMode]).
+  static String deck(bool hasFile, int mode) => '$prefix DECK ${hasFile ? 1 : 0} $mode';
+
+  /// El teléfono pide empezar a presentar la presentación elegida en la PC:
+  /// con Zlide (navegador, dibujo) o con el programa original (animaciones, videos y enlaces).
+  static String start({required bool native}) => '$prefix START ${native ? 1 : 0}';
+  static const String stop = '$prefix STOP';
+}
+
+/// Cómo presenta la PC (mensaje DECK).
+abstract final class DeckMode {
+  static const none = 0;
+
+  /// "Proyectar en esta PC": el PDF en el navegador, con dibujo.
+  static const zlide = 1;
+
+  /// En PowerPoint, Impress o Keynote (el teléfono manda teclas).
+  static const native = 2;
 }

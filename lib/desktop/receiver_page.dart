@@ -226,103 +226,203 @@ class _ReceiverPageState extends State<ReceiverPage> {
     final p = c.present;
     final deck = n.deck;
     final has = n.path != null;
+    final busy = n.loading || p.converting;
     return SrCard(
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(color: Pal.cardHi, borderRadius: BorderRadius.circular(12)),
-          child: Icon(Icons.slideshow_rounded, color: has ? Pal.accent : Pal.muted, size: 20),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text(t('Tu presentación', 'Your presentation'),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              ),
-              if (n.loading || p.converting)
-                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                Dot(connColor(p.active ? Conn.on : (has ? Conn.busy : Conn.off))),
-            ]),
-            const SizedBox(height: 4),
-            if (!has)
-              Text(
-                t('Elige aquí tu presentación (PowerPoint, LibreOffice, OnlyOffice, PDF…). El teléfono mostrará sus notas por WiFi, '
-                    'y con “Proyectar en esta PC” también podrás dibujar sobre ella desde el teléfono.',
-                    'Choose your presentation here (PowerPoint, LibreOffice, OnlyOffice, PDF…). The phone will show its notes over WiFi, '
-                    'and with “Present on this computer” you can also draw on it from the phone.'),
-                style: TextStyle(color: Pal.muted, height: 1.4),
-              )
-            else ...[
-              Text(n.name ?? t('presentación', 'presentation'),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: Pal.cardHi, borderRadius: BorderRadius.circular(12)),
+            child: Icon(Icons.slideshow_rounded, color: has ? Pal.accent : Pal.muted, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t('Tu presentación', 'Your presentation'), style: Txt.text(16, weight: FontWeight.w700, height: 1.3)),
               const SizedBox(height: 2),
-              Text(
-                deck == null
-                    ? t('PDF: sirve para proyectar, pero no trae notas.', 'PDF: good for presenting, but it has no notes.')
-                    : t('${n.slideCount} diapositivas · ${n.withNotes} con notas. '
-                        'Si guardas cambios en el archivo, se actualizan solas.',
-                        '${n.slideCount} slides · ${n.withNotes} with notes. '
-                        'If you save changes to the file, they update automatically.'),
-                style: TextStyle(color: Pal.muted, height: 1.4, fontSize: 13),
-              ),
-            ],
-            if (p.converting) ...[
-              const SizedBox(height: 6),
-              Text(t('Preparando la presentación para proyectar…', 'Preparing the presentation for presenting…'),
-                  style: TextStyle(color: Pal.busy, fontSize: 13)),
-            ] else if (p.active) ...[
-              const SizedBox(height: 6),
-              Text(
-                '${t('Proyectando en el navegador', 'Presenting in the browser')} · '
-                '${p.total > 0 ? t('diapositiva ${p.page} de ${p.total}', 'slide ${p.page} of ${p.total}') : '…'}'
-                '${p.viewers == 0 ? ' · ${t('abre la ventana del navegador', 'open the browser window')}' : ''}',
-                style: TextStyle(color: Pal.ok, fontSize: 13, height: 1.4),
-              ),
-            ],
-            if (n.error != null || p.error != null) ...[
-              const SizedBox(height: 6),
-              Text((p.error ?? n.error)!, style: TextStyle(color: Pal.error, height: 1.4, fontSize: 13)),
-            ],
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (has && !p.active)
-                PillButton(
-                  t('Proyectar en esta PC', 'Present on this computer'),
-                  primary: true,
-                  dense: true,
-                  icon: Icons.cast_rounded,
-                  onTap: p.converting ? null : c.startPresenting,
+              if (!has)
+                Text(
+                  t('Elige aquí tu presentación (PowerPoint, LibreOffice, OnlyOffice, PDF…). El teléfono mostrará sus notas '
+                      'por WiFi y podrás empezar a presentar desde aquí o desde el teléfono.',
+                      'Choose your presentation here (PowerPoint, LibreOffice, OnlyOffice, PDF…). The phone will show its '
+                      'notes over WiFi and you can start presenting from here or from the phone.'),
+                  style: Txt.text(14, color: Pal.muted, height: 1.4),
+                )
+              else ...[
+                Text(n.name ?? t('presentación', 'presentation'),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(14.5, weight: FontWeight.w600, height: 1.3)),
+                Text(
+                  deck == null
+                      ? t('PDF: sirve para proyectar, pero no trae notas.', 'PDF: good for presenting, but it has no notes.')
+                      : t('${n.slideCount} diapositivas · ${n.withNotes} con notas · se actualiza sola al guardar cambios',
+                          '${n.slideCount} slides · ${n.withNotes} with notes · updates by itself when you save changes'),
+                  style: Txt.text(13, color: Pal.muted, height: 1.4),
                 ),
-              if (p.active) ...[
-                PillButton(t('Abrir en el navegador', 'Open in the browser'),
-                    primary: true, dense: true, icon: Icons.open_in_new_rounded, onTap: p.openInBrowser),
-                PillButton(t('Detener', 'Stop'), dense: true, icon: Icons.stop_rounded, onTap: p.stop),
               ],
-              PillButton(
-                has ? t('Cambiar', 'Change') : t('Elegir presentación', 'Choose presentation'),
-                primary: !has,
-                dense: true,
-                icon: Icons.folder_open_rounded,
-                onTap: n.loading ? null : n.pick,
-              ),
-              if (has && !p.active) PillButton(t('Quitar', 'Remove'), dense: true, onTap: n.clear),
             ]),
-            if (has && !p.active) ...[
-              const SizedBox(height: 8),
-              Text(
-                t('Proyectar en esta PC: la presentación se abre a pantalla completa en el navegador y la controlas desde el teléfono, '
-                    'con dibujo y notas sincronizadas. Para .pptx/.odp hace falta LibreOffice (o PowerPoint en Windows).',
-                    'Present on this computer: the presentation opens full screen in the browser and you control it from the phone, '
-                    'with drawing and synced notes. .pptx/.odp need LibreOffice (or PowerPoint on Windows).'),
-                style: TextStyle(color: Pal.muted, fontSize: 12, height: 1.4),
-              ),
-            ],
-          ]),
+          ),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Dot(connColor(c.presenting ? Conn.on : (has ? Conn.busy : Conn.off))),
+            ),
+        ]),
+        if (n.error != null || p.error != null || c.nativeError != null) ...[
+          const SizedBox(height: 10),
+          Text((p.error ?? c.nativeError ?? n.error)!, style: Txt.text(13, color: Pal.error, height: 1.4)),
+        ],
+        const SizedBox(height: 14),
+        if (has && !c.presenting) ...[
+          _presentOption(
+            icon: Icons.cast_rounded,
+            title: t('Proyectar con Zlide', 'Present with Zlide'),
+            body: t('A pantalla completa en el navegador. Notas exactas, dibujo en vivo desde el teléfono, enlaces y videos. '
+                'Para .pptx/.odp hace falta LibreOffice (o PowerPoint en Windows).',
+                'Full screen in the browser. Exact notes, live drawing from the phone, links and videos. '
+                '.pptx/.odp need LibreOffice (or PowerPoint on Windows).'),
+            primary: true,
+            onTap: busy ? null : c.startPresenting,
+          ),
+          const SizedBox(height: 8),
+          _presentOption(
+            icon: Icons.co_present_rounded,
+            title: t('Presentar en su programa', 'Present in its own app'),
+            body: t('PowerPoint, Keynote o LibreOffice Impress: animaciones, transiciones, videos y enlaces tal cual. '
+                'El teléfono la controla con teclas.',
+                'PowerPoint, Keynote or LibreOffice Impress: animations, transitions, videos and links as they are. '
+                'The phone controls it with keys.'),
+            onTap: busy ? null : c.startNative,
+          ),
+        ],
+        if (p.converting)
+          Text(t('Preparando la presentación para proyectar…', 'Preparing the presentation for presenting…'),
+              style: Txt.text(13, color: Pal.busy)),
+        if (c.presenting) _presentingPanel(),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          PillButton(
+            has ? t('Cambiar', 'Change') : t('Elegir presentación', 'Choose presentation'),
+            primary: !has,
+            dense: true,
+            icon: Icons.folder_open_rounded,
+            onTap: n.loading ? null : n.pick,
+          ),
+          if (has && !c.presenting) PillButton(t('Quitar', 'Remove'), dense: true, onTap: n.clear),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _presentOption({
+    required IconData icon,
+    required String title,
+    required String body,
+    required VoidCallback? onTap,
+    bool primary = false,
+  }) =>
+      Material(
+        color: primary ? Pal.accent.withValues(alpha: Pal.p.dark ? 0.14 : 0.08) : Pal.bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Rad.m),
+          side: BorderSide(color: primary ? Pal.accent.withValues(alpha: 0.6) : Pal.rule),
         ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: primary ? Pal.accent : Pal.cardHi,
+                  borderRadius: BorderRadius.circular(Rad.s),
+                ),
+                child: Icon(icon, size: 20, color: primary ? Pal.onAccent : Pal.ink),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: Txt.text(15, weight: FontWeight.w700, height: 1.25)),
+                  const SizedBox(height: 2),
+                  Text(body, style: Txt.text(12.5, color: Pal.muted, height: 1.4)),
+                ]),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Pal.muted),
+            ]),
+          ),
+        ),
+      );
+
+  /// Presentando: cómo, en qué diapositiva y qué teléfono la controla.
+  Widget _presentingPanel() {
+    final p = c.present;
+    final who = c.controller;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Pal.ok.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(Rad.m),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(p.active ? Icons.cast_connected_rounded : Icons.co_present_rounded, size: 20, color: Pal.ok),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              p.active
+                  ? '${t('Proyectando en el navegador', 'Presenting in the browser')} · '
+                      '${p.total > 0 ? t('diapositiva ${p.page} de ${p.total}', 'slide ${p.page} of ${p.total}') : '…'}'
+                  : t('Abierta en ${c.nativeApp ?? 'su programa'}', 'Open in ${c.nativeApp ?? 'its own app'}'),
+              style: Txt.text(14, weight: FontWeight.w700, height: 1.3),
+            ),
+          ),
+        ]),
+        if (p.active && p.viewers == 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 30),
+            child: Text(t('Abre la ventana del navegador para verla.', 'Open the browser window to see it.'),
+                style: Txt.text(12.5, color: Pal.muted)),
+          ),
+        if (!p.active)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 30),
+            child: Text(
+                t('Deja ese programa al frente: el teléfono cambia las diapositivas con teclas.',
+                    'Keep that app in front: the phone changes slides with keys.'),
+                style: Txt.text(12.5, color: Pal.muted)),
+          ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Icon(Icons.lock_person_outlined, size: 18, color: Pal.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              who == null
+                  ? t('El primer teléfono que se conecte la controlará; los demás no podrán.',
+                      'The first phone that connects will control it; others won’t be able to.')
+                  : t('Solo la controla $who. Otros teléfonos no pueden conectarse.',
+                      'Only $who controls it. Other phones can’t connect.'),
+              style: Txt.text(12.5, color: Pal.muted, height: 1.35),
+            ),
+          ),
+          if (who != null) TextButton(onPressed: c.releaseControl, child: Text(t('Liberar', 'Release'))),
+        ]),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          if (p.active)
+            PillButton(t('Abrir en el navegador', 'Open in the browser'),
+                primary: true, dense: true, icon: Icons.open_in_new_rounded, onTap: p.openInBrowser),
+          PillButton(p.active ? t('Detener', 'Stop') : t('Terminar', 'End'),
+              dense: true, icon: Icons.stop_rounded, onTap: c.stopPresenting),
+        ]),
       ]),
     );
   }

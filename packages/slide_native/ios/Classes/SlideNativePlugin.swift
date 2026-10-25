@@ -100,6 +100,11 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             result(nil)
         case "hidSupported":
             result(false)
+        case "dndStatus", "setDnd":
+            // iOS no deja que una app active Concentración / No molestar: la app lo explica
+            result("unsupported")
+        case "openDndSettings":
+            result(false)
         case "renderPdfPage":
             guard let path = args?["path"] as? String else {
                 result(FlutterError(code: "BAD_ARGS", message: "path", details: nil))

@@ -15,6 +15,52 @@
   canvas { display: block; }
   #wrap { position: relative; }
   #ink, #live { position: absolute; left: 0; top: 0; pointer-events: none; }
+  /* Con animaciones: deck.svg (reproductor de LibreOffice) encima del PDF, que queda oculto */
+  #anim { position: absolute; left: 0; top: 0; border: 0; pointer-events: none; visibility: hidden; background: transparent; }
+  body.animOn #anim { visibility: visible; }
+  body.animOn #c { visibility: hidden; }
+  body.inkOff #ink, body.inkOff #live { visibility: hidden; }
+  /* Enlaces y videos de la diapositiva: encima de la imagen, debajo de los dibujos */
+  #ov { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #ov a { position: absolute; pointer-events: auto; cursor: pointer; border-radius: 4px; }
+  #ov a:hover { background: rgba(242, 101, 34, .14); outline: 2px solid rgba(242, 101, 34, .55); }
+  #ov .media { position: absolute; pointer-events: auto; cursor: pointer; }
+  #ov .media video { width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
+  #ov .media.playing video { display: block; }
+  #ov .media .play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px;
+    border-radius: 50%; background: rgba(0, 0, 0, .55); display: grid; place-items: center;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .35); transition: transform .15s, background .15s; }
+  #ov .media:hover .play { transform: scale(1.08); background: rgba(242, 101, 34, .9); }
+  #ov .media .play::after { content: ''; margin-left: 6px; border-style: solid; border-width: 13px 0 13px 21px;
+    border-color: transparent transparent transparent #fff; }
+  #ov .media.audio .play::after { margin-left: 0; border: 0; width: 22px; height: 22px; border-radius: 3px;
+    background: #fff; clip-path: polygon(0 30%, 35% 30%, 75% 0, 75% 100%, 35% 70%, 0 70%); }
+  #ov .media.playing .play { display: none; }
+  #ov .media.audio.playing .play { display: grid; background: rgba(242, 101, 34, .9); }
+  #open { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .55); backdrop-filter: blur(6px); z-index: 5; }
+  #open.show { display: flex; }
+  #open .card { background: #1c1714; border: 1px solid var(--stroke); border-radius: 22px; padding: 24px 28px;
+    max-width: min(560px, 90vw); text-align: center; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+  #open .url { color: var(--muted); font-size: 14px; word-break: break-all; margin: 8px 0 18px; }
+  #open button { font: inherit; border: 0; border-radius: 999px; padding: 10px 20px; font-weight: 700; cursor: pointer; }
+  #openGo { background: var(--accent); color: #fff; }
+  /* Enlace abierto dentro de la presentación (se cierra desde el teléfono, con ✕ o Esc) */
+  #linkView { position: fixed; inset: 0; z-index: 6; display: none; flex-direction: column; padding: 18px;
+    gap: 10px; background: rgba(8, 6, 5, .72); backdrop-filter: blur(10px); }
+  #linkView.show { display: flex; animation: linkIn .22s ease-out; }
+  @keyframes linkIn { from { opacity: 0; transform: scale(.985); } }
+  #linkBar { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 6px 0 16px;
+    background: var(--panel); border: 1px solid var(--stroke); border-radius: 999px; }
+  #linkBar .dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); }
+  #linkHost { font-weight: 700; white-space: nowrap; }
+  #linkUrl { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #linkBar button { font: inherit; font-size: 13px; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer;
+    padding: 8px 14px; color: var(--text); background: rgba(255, 255, 255, .08); }
+  #linkBar button:hover { background: rgba(255, 255, 255, .16); }
+  #linkClose { width: 34px; height: 34px; padding: 0 !important; font-size: 16px !important; background: var(--accent) !important; color: #fff !important; }
+  #linkFrame { flex: 1; width: 100%; border: 0; border-radius: 16px; background: #fff; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+  #openNo { background: transparent; color: var(--muted); }
   #laser { position: absolute; left: 0; top: 0; display: none; border-radius: 50%; pointer-events: none;
     will-change: transform; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
@@ -40,7 +86,12 @@
 </style>
 </head>
 <body>
-<div id="stage"><div id="wrap"><canvas id="c"></canvas><canvas id="ink"></canvas><canvas id="live"></canvas><div id="laser"></div></div></div>
+<div id="stage"><div id="wrap"><canvas id="c"></canvas><iframe id="anim" tabindex="-1" aria-hidden="true"></iframe><div id="ov"></div><canvas id="ink"></canvas><canvas id="live"></canvas><div id="laser"></div></div></div>
+<div id="linkView"><div id="linkBar"><span class="dot"></span><span id="linkHost"></span><span id="linkUrl"></span>
+  <button id="linkWin" type="button">Abrir original</button><button id="linkClose" type="button" aria-label="Cerrar">✕</button></div>
+  <iframe id="linkFrame" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe></div>
+<div id="open"><div class="card"><strong id="openTitle">Abrir enlace</strong><div class="url" id="openUrl"></div>
+  <button id="openGo" type="button">Abrir</button> <button id="openNo" type="button">Cancelar</button></div></div>
 <div id="empty" class="show">
   <div class="mark">▶</div>
   <h1>Zlide</h1>
@@ -76,6 +127,8 @@
       connected: 'Teléfono conectado', reconnecting: 'Reconectando con el teléfono…', fullscreen: 'Pantalla completa',
       pickPdfPc: 'Elige la presentación en Zlide para escritorio y toca “Proyectar en esta PC”.',
       connectedPc: 'Conectado', reconnectingPc: 'Reconectando…',
+      openLink: 'Abrir enlace', open: 'Abrir', cancel: 'Cancelar',
+      inWindow: 'Abrir original', close: 'Cerrar',
     },
     en: {
       connecting: 'Connecting…', connectingPhone: 'Connecting to the phone…',
@@ -83,6 +136,8 @@
       connected: 'Phone connected', reconnecting: 'Reconnecting to the phone…', fullscreen: 'Full screen',
       pickPdfPc: 'Choose the presentation in Zlide for desktop and click “Present on this computer”.',
       connectedPc: 'Connected', reconnectingPc: 'Reconnecting…',
+      openLink: 'Open link', open: 'Open', cancel: 'Cancel',
+      inWindow: 'Open original', close: 'Close',
     },
   };
   let lang = document.documentElement.lang === 'es' ? 'es' : 'en';
@@ -95,10 +150,16 @@
     st.textContent = T(hudKey);
     emptyMsg.textContent = T(emptyKey);
     fsBtn.textContent = T('fullscreen');
+    document.getElementById('openTitle').textContent = T('openLink');
+    document.getElementById('openGo').textContent = T('open');
+    document.getElementById('openNo').textContent = T('cancel');
+    document.getElementById('linkWin').textContent = T('inWindow');
+    document.getElementById('linkClose').setAttribute('aria-label', T('close'));
   }
   applyLang();
 
   let doc = null, page = 1, total = 0, ws = null, loading = false;
+  let animAvail = false; // quien sirve la página tiene deck.svg (animaciones y transiciones)
   let shown = 0, rendering = false;
   const cache = new Map(); // "página@ancho x alto" -> canvas ya renderizado
 
@@ -109,6 +170,7 @@
     try {
       const r = await fetch('/deck.pdf', { cache: 'no-store' });
       if (!r.ok) {
+        unloadAnim();
         doc = null; total = 0; cache.clear();
         showEmpty('pickPdf');
         report();
@@ -121,6 +183,7 @@
       cache.clear(); shown = 0;
       empty.classList.remove('show');
       await show();
+      if (animAvail) loadAnim();
     } catch (e) {
       console.error(e);
       showEmpty('cantOpen');
@@ -178,8 +241,11 @@
           c.style.width = canvas.style.width;
           c.style.height = canvas.style.height;
         }
+        ov.style.width = animFrame.style.width = canvas.style.width;
+        ov.style.height = animFrame.style.height = canvas.style.height;
         shown = target;
         drawInk();
+        overlays(target);
         pg.textContent = `${page} / ${total}`;
         report();
       }
@@ -191,6 +257,7 @@
   }
 
   function go(d) {
+    if (anim) { step(d); return; }
     if (!doc) return;
     const n = Math.min(Math.max(page + d, 1), total);
     if (n === page) return;
@@ -216,13 +283,128 @@
 
   function navTo(n) {
     if (online()) ws.send(JSON.stringify({ t: 'nav', page: n }));
-    else if (doc) { page = Math.min(Math.max(n, 1), total); show(); }
+    else if (doc) setPage(n);
   }
 
   function setPage(n) {
     if (!n) return;
     page = doc ? Math.min(Math.max(n, 1), total) : n;
+    if (anim) {
+      try {
+        if (anim.nCurSlide !== page - 1) anim.aSlideShow.displaySlide(page - 1, false);
+      } catch (e) { console.warn(e); }
+    }
     if (doc) show();
+  }
+
+  // ------------------------------------------------------------ animaciones y transiciones
+  // deck.svg trae el reproductor de LibreOffice (animaciones, transiciones, avance por tiempo).
+  // Se maneja desde aquí: no recibe clics ni teclas propios, solo "paso" y "ve a la diapositiva".
+  // El PDF sigue debajo (oculto) para los enlaces, videos y dibujos, que van encima de todo.
+  const animFrame = document.getElementById('anim');
+  let anim = null; // ventana del reproductor, ya lista
+  let animSeq = 0, animPoll = 0;
+
+  function unloadAnim() {
+    anim = null;
+    clicks.clear();
+    animSeq++;
+    clearInterval(animPoll);
+    document.body.classList.remove('animOn');
+    animFrame.onload = null;
+    animFrame.removeAttribute('src');
+  }
+
+  function loadAnim() {
+    unloadAnim();
+    const seq = animSeq;
+    animFrame.onload = () => {
+      if (seq !== animSeq) return;
+      const w = animFrame.contentWindow;
+      try {
+        if (!w || !w.aSlideShow || !w.theMetaDoc) throw new Error('sin reproductor');
+        w.alert = (m) => console.warn(m); // sus errores no deben tapar la presentación
+        const root = w.document.documentElement;
+        root.setAttribute('width', '100%');
+        root.setAttribute('height', '100%');
+        if (w.nCurSlide !== page - 1) w.aSlideShow.displaySlide(page - 1, true);
+      } catch (e) {
+        console.warn('Animaciones no disponibles:', e);
+        unloadAnim();
+        return; // se queda el PDF
+      }
+      anim = w;
+      document.body.classList.add('animOn');
+      animPoll = setInterval(animSync, 150); // también cambia sola (diapositivas con tiempo)
+      if (online()) ws.send(JSON.stringify({ t: 'anim', on: true }));
+    };
+    animFrame.src = '/deck.svg?v=' + Date.now();
+  }
+
+  /// Si el reproductor cambió de diapositiva: mover dibujos, enlaces y videos, y avisar.
+  /// También avisa en qué animación va la diapositiva (`{t:'fx', page, step, steps}`), para el
+  /// contador del teléfono.
+  let fxKey = '';
+  function animSync() {
+    if (!anim) return;
+    let n, step, steps;
+    try {
+      // Durante la transición sigue marcando la diapositiva anterior: esperar a que termine
+      if (anim.aSlideShow.isTransitionPlaying()) return;
+      n = anim.nCurSlide + 1;
+      steps = clickCount(n);
+      step = Math.min(anim.aSlideShow.nCurrentEffect || 0, steps);
+    } catch { return; }
+    if (!n) return;
+    if (n !== page) {
+      page = n;
+      if (online()) ws.send(JSON.stringify({ t: 'at', page }));
+      show();
+    }
+    const key = `${n}:${step}/${steps}`;
+    if (key !== fxKey && online()) {
+      fxKey = key;
+      ws.send(JSON.stringify({ t: 'fx', page: n, step, steps }));
+    }
+  }
+
+  /// Clics de animación de la diapositiva [n]: en el SVG, cada grupo de su secuencia principal
+  /// que empieza con "next" (el reproductor solo los registra conforme van tocando).
+  const clicks = new Map();
+  function clickCount(n) {
+    if (clicks.has(n)) return clicks.get(n);
+    let count = 0;
+    try {
+      if (anim.aSlideShow.isEnabled()) {
+        const id = anim.theMetaDoc.aMetaSlideSet[n - 1].slideId;
+        const defs = anim.document.getElementById(id + '-animations');
+        for (const seq of defs ? defs.getElementsByTagNameNS('*', 'seq') : []) {
+          if (seq.getAttribute('presentation:node-type') !== 'main-sequence') continue;
+          count = [...seq.children].filter((c) => c.getAttribute('smil:begin') === 'next').length;
+          break;
+        }
+      }
+    } catch { /* sin datos: sin contador */ }
+    clicks.set(n, count);
+    return count;
+  }
+
+  /// Un paso: la siguiente animación de la diapositiva o, si ya no hay, la siguiente diapositiva.
+  function step(d) {
+    try {
+      const ss = anim.aSlideShow;
+      const cur = anim.nCurSlide, last = anim.theMetaDoc.nNumberOfSlides - 1;
+      if (d > 0) {
+        const pending = ss.isTransitionPlaying() || ss.isAnyEffectPlaying() ||
+          (ss.aNextEffectEventArray && ss.nCurrentEffect < ss.aNextEffectEventArray.size());
+        if (cur >= last && !pending) return; // al final no vuelve a empezar
+        anim.dispatchEffects(1);
+      } else if (d < 0) {
+        if (cur <= 0 && !ss.hasAnyEffectStarted() && !ss.isTransitionPlaying()) return;
+        ss.rewindEffect();
+      }
+    } catch (e) { console.warn(e); }
+    animSync();
   }
 
   function report() {
@@ -238,20 +420,34 @@
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.t === 'page') setPage(msg.page);
+      else if (msg.t === 'step') { if (anim) step(msg.d); else go(msg.d); }
       else if (msg.t === 'go') go(msg.d); // versión anterior de la app
-      else if (msg.t === 'reload') load(); // se queda en la misma página (la corrige el teléfono/la PC)
+      else if (msg.t === 'reload') { animAvail = !!msg.anim; unloadAnim(); load(); } // misma página (la corrige el teléfono/la PC)
       else if (msg.t === 'ink') onInk(msg);
       else if (msg.t === 'inkAll') {
         inkPages.clear();
         for (const [k, v] of Object.entries(msg.pages || {})) inkPages.set(Number(k), v);
+        if (msg.vis !== undefined) setInkVisible(msg.vis !== false);
         drawInk();
       }
+      else if (msg.t === 'inkVis') setInkVisible(msg.on !== false);
+      else if (msg.t === 'open') openLink(msg.url, msg.kind, msg.orig);
+      else if (msg.t === 'linkCtl') linkCtl(msg);
+      else if (msg.t === 'closeLink') closeLink();
+      else if (msg.t === 'media') { media = msg.items || []; overlays(shown); }
+      else if (msg.t === 'mediaCtl') mediaCtl(msg.op, msg.i);
       else if (msg.t === 'laser') onLaser(msg);
       else if (msg.t === 'lang') { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
       else if (msg.t === 'hello') {
+        // La app se actualizó mientras esta pestaña estaba abierta: cargar la página nueva
+        const mine = document.documentElement.dataset.build;
+        if (msg.build && mine && msg.build !== mine) { location.reload(); return; }
         if (msg.lang && msg.lang !== lang) { lang = msg.lang === 'es' ? 'es' : 'en'; applyLang(); }
         if (msg.src === 'pc' && !fromPc) { fromPc = true; applyLang(); }
+        animAvail = !!msg.anim;
         if (msg.page) setPage(msg.page);
+        if (anim) { ws.send(JSON.stringify({ t: 'anim', on: true })); fxKey = ''; } // reconexión: la app lo olvidó
+        if (linkUrl) linkReport(); // reconexión: que el teléfono sepa que hay un enlace abierto
         if (msg.hasPdf && !doc) load();
         else if (!msg.hasPdf) showEmpty('pickPdf');
       }
@@ -471,14 +667,412 @@
       else kick();
       return;
     }
-    if (m.op === 'undo') list.pop();
+    if (m.op === 'del') {
+      const i = list.findIndex((s) => s.id === m.id);
+      if (i < 0) return;
+      list.splice(i, 1);
+    }
+    else if (m.op === 'set') inkPages.set(m.page, m.strokes || []);
+    else if (m.op === 'undo') list.pop(); // versión anterior de la app
     else if (m.op === 'clear') inkPages.delete(m.page);
     else if (m.op === 'clearAll') inkPages.clear();
     if (m.page === shown || m.op === 'clearAll') drawInk();
   }
 
+  function setInkVisible(on) { document.body.classList.toggle('inkOff', !on); }
+
+  // ------------------------------------------------------------ enlaces y videos de la diapositiva
+  // Los enlaces vienen en el PDF (anotaciones); los videos y audios, del archivo original: quien
+  // sirve la página los anuncia con su posición ({t:'media', items:[{page, id, x, y, w, h, src, kind}]}).
+  // Se pueden usar con el mouse en la PC o desde el teléfono.
+  const ov = document.getElementById('ov');
+  let media = [];
+  let ovToken = 0;
+  let pageLinks = [];
+
+  async function overlays(n) {
+    const token = ++ovToken;
+    for (const v of ov.querySelectorAll('video, audio')) v.pause();
+    ov.replaceChildren();
+    pageLinks = [];
+    if (!doc || !n) return;
+    const W = parseFloat(canvas.style.width), H = parseFloat(canvas.style.height);
+    for (const m of media) {
+      if (m.page !== n) continue;
+      const box = document.createElement('div');
+      box.className = 'media' + (m.kind === 'audio' ? ' audio' : '');
+      Object.assign(box.style, { left: m.x * W + 'px', top: m.y * H + 'px', width: m.w * W + 'px', height: m.h * H + 'px' });
+      const el = document.createElement(m.kind === 'audio' ? 'audio' : 'video');
+      el.src = m.src;
+      el.preload = 'metadata';
+      el.playsInline = true;
+      const badge = document.createElement('div');
+      badge.className = 'play';
+      box.append(el, badge);
+      el.addEventListener('play', () => { box.classList.add('playing'); mediaReport(); });
+      el.addEventListener('pause', () => { box.classList.remove('playing'); mediaReport(); });
+      el.addEventListener('ended', () => { box.classList.remove('playing'); el.currentTime = 0; mediaReport(); });
+      box.addEventListener('click', (e) => { e.stopPropagation(); el.paused ? el.play().catch(() => {}) : el.pause(); });
+      ov.append(box);
+    }
+    try {
+      const p = await doc.getPage(n);
+      const base = p.getViewport({ scale: 1 });
+      const vp = p.getViewport({ scale: W / base.width });
+      const annots = await p.getAnnotations();
+      if (token !== ovToken) return;
+      for (const a of annots) {
+        if (a.subtype !== 'Link') continue;
+        const url = a.url || a.unsafeUrl;
+        if (!url && !a.dest) continue;
+        const [x1, y1, x2, y2] = vp.convertToViewportRectangle(a.rect);
+        const link = document.createElement('a');
+        Object.assign(link.style, {
+          left: Math.min(x1, x2) + 'px', top: Math.min(y1, y2) + 'px',
+          width: Math.abs(x2 - x1) + 'px', height: Math.abs(y2 - y1) + 'px',
+        });
+        if (url) {
+          link.href = url;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.title = url;
+          pageLinks.push(url);
+        }
+        link.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (url) {
+            // Igual que desde el teléfono: dentro de la presentación (quien sirve la página decide cómo)
+            if (online()) { e.preventDefault(); ws.send(JSON.stringify({ t: 'openReq', url })); }
+            return; // sin conexión, el navegador lo abre en otra pestaña
+          }
+          e.preventDefault();
+          try {
+            const dest = typeof a.dest === 'string' ? await doc.getDestination(a.dest) : a.dest;
+            navTo((await doc.getPageIndex(dest[0])) + 1);
+          } catch { /* destino roto */ }
+        });
+        ov.append(link);
+      }
+    } catch (e) { console.warn(e); }
+    if (token !== ovToken) return;
+    // Para que el teléfono los ofrezca (abrirlos desde ahí)
+    if (online()) ws.send(JSON.stringify({ t: 'links', page: n, links: [...new Set(pageLinks)] }));
+    mediaReport();
+  }
+
+  /// Videos de la diapositiva para el teléfono: cuántos y cuál suena (uno por botón).
+  function mediaReport() {
+    if (!online()) return;
+    const els = [...ov.querySelectorAll('video, audio')];
+    ws.send(JSON.stringify({
+      t: 'mediaState', page: shown, count: els.length, playing: els.some((v) => !v.paused),
+      items: els.map((v) => ({ playing: !v.paused, kind: v.tagName === 'AUDIO' ? 'audio' : 'video' })),
+    }));
+  }
+
+  /// Desde el teléfono: reproducir o pausar un video/audio de la diapositiva ([i]; sin [i], el
+  /// que suena o el primero). Al reproducir uno se pausan los demás.
+  function mediaCtl(op, i) {
+    const els = [...ov.querySelectorAll('video, audio')];
+    if (!els.length) return;
+    const playing = els.find((v) => !v.paused);
+    const el = (i != null && els[i]) || playing || els[0];
+    if (op === 'pause' || (op === 'toggle' && !el.paused)) { el.pause(); return; }
+    if (op === 'restart') el.currentTime = 0;
+    for (const v of els) if (v !== el && !v.paused) v.pause();
+    el.play().catch(() => {
+      // El navegador no deja reproducir con sonido sin un clic en la página: intentar sin sonido
+      el.muted = true;
+      el.play().catch(() => {});
+    });
+  }
+
+  // ------------------------------------------------------------ enlaces dentro de la presentación
+  // Un panel encima de la diapositiva, en esta misma pestaña; se maneja desde el teléfono
+  // (`{t:'linkCtl'}`) y se cierra desde ahí, con ✕ o con Esc. Tipos ([kind]):
+  //  - 'page': la sirve quien sirve esta página (/link?u=…), sin scripts. Al ser del mismo
+  //    origen se puede desplazar, seguir sus enlaces y regresar desde el teléfono.
+  //  - 'video': reproductor de YouTube, con su API de mensajes (reproducir, pausar, adelantar…).
+  //  - 'window': ventana aparte (botón "Abrir en ventana"): solo se puede cerrar.
+  // El teléfono recibe `{t:'linkState'}` con lo necesario para mostrar sus controles.
+  const openBox = document.getElementById('open');
+  const linkView = document.getElementById('linkView');
+  const linkFrame = document.getElementById('linkFrame');
+  let openPending = '';
+  let linkUrl = ''; // página abierta ('' si ninguna)
+  let linkKind = '';
+  let linkTitle = '';
+  let linkHistory = []; // páginas anteriores (Atrás)
+  let linkAnchors = []; // enlaces visibles ahora (el teléfono los elige por índice)
+  let linkWin = null, linkWatch = 0, linkScrollTimer = 0;
+  let yt = { playing: false, muted: false, time: 0, dur: 0 }; // estado del video de YouTube
+  let ytReported = 0;
+
+  function hostOf(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+  }
+
+  function linkReport() {
+    if (!online()) return;
+    const msg = { t: 'linkState', open: !!linkUrl, url: linkUrl, kind: linkKind, title: linkTitle, canBack: linkHistory.length > 0 };
+    if (linkKind === 'page') msg.links = linkAnchors.map((a, i) => ({ i, text: a._zText }));
+    if (linkKind === 'video') msg.video = yt;
+    ws.send(JSON.stringify(msg));
+  }
+
+  function setBar() {
+    document.getElementById('linkHost').textContent = linkTitle || hostOf(linkUrl);
+    document.getElementById('linkUrl').textContent = linkUrl;
+  }
+
+  /// [url]: lo que se carga (el reproductor de YouTube, por ejemplo); [orig]: el enlace tal
+  /// como está en la diapositiva.
+  function openLink(url, kind, orig) {
+    if (!/^(https?|mailto):/i.test(url || '')) return;
+    if (kind === 'mail' || /^mailto:/i.test(url)) { window.open(url, '_blank', 'noopener'); return; }
+    closeLink(true);
+    linkHistory = [];
+    if (kind === 'video') {
+      linkKind = 'video';
+      linkUrl = orig || url;
+      linkTitle = '';
+      yt = { playing: false, muted: false, time: 0, dur: 0 };
+      linkFrame.removeAttribute('sandbox');
+      // YouTube exige saber desde dónde se inserta (sin eso: error 153)
+      linkFrame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      linkFrame.src = url + '&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
+      setBar();
+      linkView.classList.add('show');
+      linkReport();
+    } else {
+      linkKind = 'page';
+      pageGo(orig || url);
+    }
+  }
+
+  /// Cargar una página en el panel (a través de quien sirve esta página).
+  function pageGo(url) {
+    linkUrl = url;
+    linkTitle = '';
+    linkAnchors = [];
+    linkFrame.setAttribute('sandbox', 'allow-same-origin allow-forms'); // sin scripts
+    linkFrame.removeAttribute('referrerpolicy');
+    linkFrame.src = '/link?u=' + encodeURIComponent(url);
+    setBar();
+    linkView.classList.add('show');
+    linkReport();
+  }
+
+  linkFrame.addEventListener('load', () => {
+    if (linkKind === 'video') {
+      // Pedirle a YouTube que mande su estado (infoDelivery)
+      ytSend({ event: 'listening', id: 'zlide' });
+      return;
+    }
+    if (linkKind !== 'page') return;
+    let doc;
+    try { doc = linkFrame.contentDocument; } catch { return; }
+    if (!doc || !doc.documentElement) return;
+    linkTitle = (doc.title || '').trim();
+    setBar();
+    doc.addEventListener('click', onPageClick, true);
+    doc.addEventListener('submit', onPageSubmit, true);
+    linkFrame.contentWindow.addEventListener('scroll', () => {
+      clearTimeout(linkScrollTimer);
+      linkScrollTimer = setTimeout(visibleLinks, 200);
+    }, { passive: true });
+    visibleLinks();
+  });
+
+  /// Enlaces que se ven ahora en el panel (para elegirlos desde el teléfono).
+  function visibleLinks() {
+    let doc, win;
+    try { doc = linkFrame.contentDocument; win = linkFrame.contentWindow; } catch { return; }
+    if (!doc || linkKind !== 'page') return;
+    const H = win.innerHeight, seen = new Set(), main = [], rest = [];
+    // Primero los del contenido (no los del menú o el índice)
+    const body = doc.querySelector('main, [role="main"], article, #content, #main') || null;
+    for (const a of doc.querySelectorAll('a[href]')) {
+      const href = a.href;
+      if (!/^https?:/i.test(href) || seen.has(href)) continue;
+      const r = a.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > H) continue;
+      const text = (a.innerText || a.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      seen.add(href);
+      a._zText = text.length > 60 ? text.slice(0, 58) + '…' : text;
+      (body && body.contains(a) ? main : rest).push(a);
+    }
+    linkAnchors = [...main, ...rest].slice(0, 16);
+    linkReport();
+  }
+
+  /// Un ancla de la página abierta (#algo, o solo #).
+  function sameDoc(href) {
+    try {
+      const a = new URL(href), b = new URL(linkUrl);
+      return href.includes('#') && a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
+    } catch { return false; }
+  }
+
+  function follow(a) {
+    const href = a.href;
+    if (sameDoc(href)) {
+      // Ancla de la misma página: desplazar hasta ella
+      const id = decodeURIComponent(new URL(href).hash.slice(1));
+      const doc = linkFrame.contentDocument;
+      const el = id && (doc.getElementById(id) || doc.getElementsByName(id)[0]);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (!id) linkFrame.contentWindow.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!/^https?:/i.test(href)) return;
+    linkHistory.push(linkUrl);
+    pageGo(href);
+  }
+
+  function onPageClick(e) {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    follow(a);
+  }
+
+  function onPageSubmit(e) {
+    e.preventDefault();
+    const f = e.target;
+    if ((f.method || 'get').toLowerCase() !== 'get') return;
+    try {
+      const u = new URL(f.action, linkFrame.contentDocument.baseURI);
+      for (const [k, v] of new FormData(f)) if (typeof v === 'string') u.searchParams.append(k, v);
+      linkHistory.push(linkUrl);
+      pageGo(u.href);
+    } catch { /* formulario raro */ }
+  }
+
+  function ytSend(obj) {
+    try { linkFrame.contentWindow.postMessage(JSON.stringify(obj), '*'); } catch { /* aún no carga */ }
+  }
+
+  function ytCmd(func, args = []) { ytSend({ event: 'command', func, args }); }
+
+  addEventListener('message', (e) => {
+    if (linkKind !== 'video' || e.source !== linkFrame.contentWindow) return;
+    let d;
+    try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    if (d && d.event === 'onError') {
+      // El dueño no deja insertarlo (o no existe): ofrecer abrirlo en YouTube, en una ventana
+      const url = linkUrl;
+      linkView.classList.remove('show');
+      linkFrame.removeAttribute('src');
+      linkKind = 'window';
+      linkReport();
+      popup(url);
+      return;
+    }
+    const info = d && d.info;
+    if (!info || typeof info !== 'object') return;
+    const was = yt.playing, wasMuted = yt.muted;
+    if (info.playerState !== undefined) yt.playing = info.playerState === 1 || info.playerState === 3;
+    if (info.muted !== undefined) yt.muted = !!info.muted;
+    if (typeof info.currentTime === 'number') yt.time = info.currentTime;
+    if (typeof info.duration === 'number') yt.dur = info.duration;
+    if (info.videoData && info.videoData.title && !linkTitle) { linkTitle = info.videoData.title; setBar(); }
+    // Al teléfono: de inmediato si cambió algo importante; el tiempo, cada segundo
+    const now = performance.now();
+    if (was !== yt.playing || wasMuted !== yt.muted || now - ytReported > 1000) {
+      ytReported = now;
+      linkReport();
+    }
+  });
+
+  /// Controles desde el teléfono.
+  function linkCtl(m) {
+    if (!linkUrl) return;
+    if (linkKind === 'page') {
+      let win;
+      try { win = linkFrame.contentWindow; } catch { return; }
+      if (!win) return;
+      if (m.op === 'scroll') win.scrollBy({ top: (m.dy || 0) * win.innerHeight, behavior: m.smooth ? 'smooth' : 'instant' });
+      else if (m.op === 'top') win.scrollTo({ top: 0, behavior: 'smooth' });
+      else if (m.op === 'follow' && linkAnchors[m.i]) follow(linkAnchors[m.i]);
+      else if (m.op === 'back' && linkHistory.length) pageGo(linkHistory.pop());
+    } else if (linkKind === 'video') {
+      if (m.op === 'play') {
+        ytCmd('playVideo');
+        // Sin un clic en la página el navegador puede impedir el sonido: entonces sin sonido
+        setTimeout(() => { if (!yt.playing) { ytCmd('mute'); ytCmd('playVideo'); } }, 1800);
+      }
+      else if (m.op === 'pause') ytCmd('pauseVideo');
+      else if (m.op === 'seek') ytCmd('seekTo', [Math.max(0, yt.time + (m.s || 0)), true]);
+      else if (m.op === 'restart') { ytCmd('seekTo', [0, true]); ytCmd('playVideo'); }
+      else if (m.op === 'mute') ytCmd(yt.muted ? 'unMute' : 'mute');
+    }
+  }
+
+  /// Ventana aparte (casi del tamaño de la pantalla). Se guarda para poder cerrarla después.
+  function popup(url) {
+    const W = Math.round(screen.availWidth * 0.9), H = Math.round(screen.availHeight * 0.9);
+    const L = Math.round((screen.availWidth - W) / 2), Tp = Math.round((screen.availHeight - H) / 2);
+    const w = window.open(url, 'zlide-link', `popup=yes,width=${W},height=${H},left=${L},top=${Tp}`);
+    if (!w) {
+      // El navegador la bloqueó (no hubo clic en esta página): pedir el clic
+      openPending = url;
+      document.getElementById('openUrl').textContent = url;
+      openBox.classList.add('show');
+      return;
+    }
+    linkWin = w;
+    clearInterval(linkWatch);
+    linkWatch = setInterval(() => {
+      if (linkWin && !linkWin.closed) return;
+      // La cerraron en la PC
+      clearInterval(linkWatch);
+      linkWin = null;
+      if (linkKind === 'window') closeLink();
+    }, 500);
+  }
+
+  /// [silent]: no avisar (se va a abrir otro enseguida).
+  function closeLink(silent) {
+    const was = !!linkUrl;
+    linkView.classList.remove('show');
+    linkFrame.removeAttribute('src');
+    openBox.classList.remove('show');
+    clearInterval(linkWatch);
+    if (linkWin && !linkWin.closed) { try { linkWin.close(); } catch { /* ya cerrada */ } }
+    linkWin = null;
+    linkUrl = linkKind = linkTitle = '';
+    linkHistory = [];
+    linkAnchors = [];
+    try { window.focus(); } catch { /* opcional */ }
+    if (was && !silent) linkReport();
+  }
+
+  document.getElementById('openGo').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openBox.classList.remove('show');
+    popup(openPending);
+  });
+  document.getElementById('openNo').addEventListener('click', (e) => { e.stopPropagation(); closeLink(); });
+  openBox.addEventListener('click', (e) => e.stopPropagation());
+  document.getElementById('linkClose').addEventListener('click', () => closeLink());
+  document.getElementById('linkWin').addEventListener('click', () => {
+    // Con todo y sus scripts, en una ventana (sigue abierta para el teléfono, que puede cerrarla)
+    const url = linkUrl;
+    linkView.classList.remove('show');
+    linkFrame.removeAttribute('src');
+    linkKind = 'window';
+    linkReport();
+    popup(url);
+  });
+
   // ------------------------------------------------------------ teclado, clic, pantalla completa
   addEventListener('keydown', (e) => {
+    if (openBox.classList.contains('show') || linkView.classList.contains('show')) {
+      if (e.key === 'Escape') closeLink();
+      return;
+    }
     if (['ArrowRight', 'PageDown', ' ', 'Enter', 'ArrowDown'].includes(e.key)) { nav(1); e.preventDefault(); }
     else if (['ArrowLeft', 'PageUp', 'Backspace', 'ArrowUp'].includes(e.key)) { nav(-1); e.preventDefault(); }
     else if (e.key === 'f' || e.key === 'F') toggleFullscreen();

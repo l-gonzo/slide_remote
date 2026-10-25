@@ -27,6 +27,14 @@ class WifiClient extends ChangeNotifier {
 
   PcEntry? target;
   bool online = false;
+
+  /// La PC está presentando con otro teléfono: no acepta los comandos de este.
+  bool get busy => _busyAt != null && DateTime.now().difference(_busyAt!) < const Duration(seconds: 5);
+  DateTime? _busyAt;
+
+  /// La PC tiene una presentación elegida, y cómo la presenta ([DeckMode]).
+  bool pcHasDeck = false;
+  int pcDeckMode = 0;
   int? latencyMs;
   bool searching = false;
   String? error;
@@ -48,7 +56,8 @@ class WifiClient extends ChangeNotifier {
 
   /// La PC proyecta con Zlide: (página, total). 0 0 = no está proyectando.
   /// [version] identifica el PDF que proyecta la PC (0 si la app de escritorio no lo manda).
-  void Function(int page, int total, int version)? onPage;
+  /// [step] de [steps]: animación en la que va la diapositiva (steps -1: no se sabe).
+  void Function(int page, int total, int version, int step, int steps)? onPage;
 
   /// Dirección de la PC elegida (para pedirle las notas).
   InternetAddress? get targetAddress => _targetAddress;
@@ -88,6 +97,9 @@ class WifiClient extends ChangeNotifier {
     latencyMs = null;
     _lastPong = null;
     _targetAddress = null;
+    _busyAt = null;
+    pcHasDeck = false;
+    pcDeckMode = 0;
     if (pc != null) {
       preferredName = pc.name;
       _targetAddress = await _resolve(pc.host);
@@ -98,6 +110,10 @@ class WifiClient extends ChangeNotifier {
 
   /// true si el datagrama se pudo enviar (no garantiza que llegue: es UDP).
   bool send(int cmd) => _sendRaw(Udp.command(cmd));
+
+  /// Pedir a la PC que empiece a presentar (o que termine).
+  bool sendStart({required bool native}) => _sendRaw(Udp.start(native: native));
+  bool sendStop() => _sendRaw(Udp.stop);
 
   /// Ir a la diapositiva [n] (ver [Udp.goTo]).
   bool sendGoTo(int n) => _sendRaw(Udp.goTo(n));
@@ -126,7 +142,27 @@ class WifiClient extends ChangeNotifier {
           final page = p.length > 2 ? int.tryParse(p[2]) : null;
           final total = p.length > 3 ? int.tryParse(p[3]) : null;
           final version = p.length > 4 ? int.tryParse(p[4]) ?? 0 : 0;
-          if (page != null && total != null) onPage?.call(page, total, version);
+          final step = p.length > 5 ? int.tryParse(p[5]) ?? 0 : 0;
+          final steps = p.length > 6 ? int.tryParse(p[6]) ?? -1 : -1; // versión anterior: no lo manda
+          if (page != null && total != null) onPage?.call(page, total, version, step, steps);
+          return;
+        }
+        if (msg == Udp.busy) {
+          final was = busy;
+          _busyAt = DateTime.now();
+          if (!was) notifyListeners();
+          return;
+        }
+        if (msg.startsWith('${Udp.prefix} DECK ')) {
+          final p = msg.split(' ');
+          final has = p.length > 2 && p[2] == '1';
+          final mode = p.length > 3 ? int.tryParse(p[3]) ?? 0 : 0;
+          _busyAt = null;
+          if (has != pcHasDeck || mode != pcDeckMode) {
+            pcHasDeck = has;
+            pcDeckMode = mode;
+            notifyListeners();
+          }
           return;
         }
         if (msg.startsWith('${Udp.prefix} NOTES ')) {
@@ -230,6 +266,9 @@ class WifiClient extends ChangeNotifier {
     final stillOnline = last != null && DateTime.now().difference(last) < const Duration(seconds: 5);
     if (stillOnline != online) {
       online = stillOnline;
+      notifyListeners();
+    } else if (_busyAt != null && !busy) {
+      _busyAt = null; // la PC se liberó
       notifyListeners();
     }
   }

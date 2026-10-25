@@ -20,5 +20,8 @@
     <!-- Avisos del tiempo objetivo del cronómetro -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- "No molestar" mientras se presenta (el usuario da el acceso en los ajustes del sistema) -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 </manifest>

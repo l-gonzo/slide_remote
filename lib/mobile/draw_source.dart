@@ -42,6 +42,30 @@ abstract class DrawSource extends ChangeNotifier {
   bool get canRefresh => false;
   void refresh() {}
 
+  /// Enlaces de la página [page] (los informa el navegador de la PC).
+  List<String> links(int page);
+
+  /// Abrir un enlace en la PC (encima de la presentación).
+  void openLink(String url);
+
+  /// Enlace abierto ahora en la PC, encima de la presentación (null si ninguno):
+  /// `{url, kind: 'page'|'video'|'window', title, canBack, links: [{i, text}], video: {playing, muted, time, dur}}`.
+  Map<String, Object?>? get link;
+
+  /// Cerrarlo para volver a la presentación.
+  void closeLink();
+
+  /// Manejarlo: `{op:'scroll', dy}`, `{op:'follow', i}`, `{op:'back'}`, `{op:'play'}`, `{op:'seek', s}`…
+  void linkCtl(Map<String, Object?> op);
+
+  /// Videos y audios de la página actual, y si alguno suena ([mediaItems]: si suena, uno por uno).
+  int get mediaCount;
+  bool get mediaPlaying;
+  List<bool> get mediaItems;
+
+  /// 'toggle', 'play', 'pause' o 'restart'; [index]: cuál (sin él, el que suena o el primero).
+  void mediaCtl(String op, {int? index});
+
   Future<void> close();
 }
 
@@ -115,6 +139,33 @@ class BrowserDrawSource extends DrawSource {
   }
 
   @override
+  List<String> links(int page) => c.browser.linksOf(page);
+
+  @override
+  void openLink(String url) => c.browser.openLink(url);
+
+  @override
+  Map<String, Object?>? get link => c.browser.linkState;
+
+  @override
+  void closeLink() => c.browser.closeLink();
+
+  @override
+  void linkCtl(Map<String, Object?> op) => c.browser.linkCtl(op);
+
+  @override
+  int get mediaCount => c.browser.pageMedia;
+
+  @override
+  bool get mediaPlaying => c.browser.mediaPlaying;
+
+  @override
+  List<bool> get mediaItems => c.browser.pageMedia > 0 ? c.browser.mediaItems : const [];
+
+  @override
+  void mediaCtl(String op, {int? index}) => c.browser.mediaCtl(op, index: index);
+
+  @override
   void go(bool forward) {
     if (connected) {
       c.send(forward: forward); // igual que los botones de volumen
@@ -179,6 +230,43 @@ class WifiDrawSource extends DrawSource {
   final Set<int> _failed = {};
 
   bool get presenting => _presenting;
+
+  // enlaces y videos de la diapositiva (los informa el navegador de la PC)
+  final Map<int, List<String>> _links = {};
+  int _mediaPage = 0;
+  int _mediaCount = 0;
+  bool _mediaPlaying = false;
+
+  @override
+  List<String> links(int page) => _links[page] ?? const [];
+
+  @override
+  void openLink(String url) => _send({'t': 'open', 'url': url});
+
+  Map<String, Object?>? _link;
+
+  @override
+  Map<String, Object?>? get link => _link;
+
+  @override
+  void closeLink() => _send({'t': 'closeLink'});
+
+  @override
+  void linkCtl(Map<String, Object?> op) => _send({...op, 't': 'linkCtl'});
+
+  @override
+  int get mediaCount => _mediaPage == _page ? _mediaCount : 0;
+
+  @override
+  bool get mediaPlaying => _mediaPlaying;
+
+  List<bool> _mediaItems = const [];
+
+  @override
+  List<bool> get mediaItems => _mediaPage == _page ? _mediaItems : const [];
+
+  @override
+  void mediaCtl(String op, {int? index}) => _send({'t': 'mediaCtl', 'op': op, 'i': index});
 
   @override
   int get page => _page;
@@ -307,6 +395,7 @@ class WifiDrawSource extends DrawSource {
           // Otra presentación: los dibujos viejos ya no aplican (si solo se editó, se conservan)
           if (_ver != 0 && m['keep'] != true) ink.clearAll();
           _ver = ver;
+          _links.clear();
           _download(ver);
         } else if (_presenting) {
           _send(ink.snapshot()); // la PC pudo reiniciarse: volver a mandar lo dibujado
@@ -315,6 +404,19 @@ class WifiDrawSource extends DrawSource {
       case 'page':
         _page = (m['page'] as num?)?.toInt() ?? _page;
         _total = (m['total'] as num?)?.toInt() ?? _total;
+        notifyListeners();
+      case 'links':
+        final p = (m['page'] as num?)?.toInt() ?? 0;
+        _links[p] = [for (final l in (m['links'] as List? ?? const [])) if (l is String) l];
+        notifyListeners();
+      case 'mediaState':
+        _mediaPage = (m['page'] as num?)?.toInt() ?? 0;
+        _mediaCount = (m['count'] as num?)?.toInt() ?? 0;
+        _mediaPlaying = m['playing'] == true;
+        _mediaItems = [for (final it in (m['items'] as List? ?? const [])) it is Map && it['playing'] == true];
+        notifyListeners();
+      case 'linkState':
+        _link = m['open'] == true ? Map<String, Object?>.from(m) : null;
         notifyListeners();
     }
   }
