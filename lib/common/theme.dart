@@ -437,6 +437,10 @@ ThemeData buildTheme() {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.m)),
       textStyle: Txt.text(15),
+      // Material 3 toma el texto de aquí (si no, usa labelLarge, la tipografía de títulos)
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (s) => Txt.text(15, color: s.contains(WidgetState.disabled) ? p.faint : p.ink),
+      ),
     ),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(Rad.s)),

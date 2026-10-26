@@ -7,6 +7,21 @@ import 'package:flutter/foundation.dart';
 /// Herramientas de la vista de dibujo. El borrador quita trazos completos (como en PowerPoint).
 enum InkTool { pen, highlighter, laser, eraser }
 
+/// Qué hace el puntero ([InkTool.laser]): un punto rojo, un foco (oscurece todo menos un
+/// círculo) o una lupa (agranda lo que está debajo).
+enum PointerKind {
+  laser,
+  spot,
+  zoom;
+
+  /// Nombre en el mensaje al navegador (`k`); el láser no lo lleva, como antes.
+  String? get wire => switch (this) {
+        PointerKind.laser => null,
+        PointerKind.spot => 'spot',
+        PointerKind.zoom => 'zoom',
+      };
+}
+
 /// Un trazo sobre una diapositiva. Las coordenadas van de 0 a 1 respecto a la página
 /// (así se ve igual en el teléfono y en la pantalla de la PC, del tamaño que sea).
 class InkStroke {
@@ -100,6 +115,9 @@ class InkBoard extends ChangeNotifier {
   /// Tamaño del puntero láser (1 = normal).
   double laserScale = 1;
 
+  /// Láser, foco o lupa.
+  PointerKind laserKind = PointerKind.laser;
+
   InkStroke? _current;
   int _currentPage = 0;
   final List<Offset> _pending = [];
@@ -134,10 +152,19 @@ class InkBoard extends ChangeNotifier {
   // ---------------------------------------------------------------- trazos
 
   /// [width]: grosor como fracción del ancho de la página; con el láser, su tamaño (1 = normal).
-  void begin(int page, Offset p, {required InkTool tool, required Color color, required double width}) {
+  /// [pointer]: con el láser, si es punto, foco o lupa.
+  void begin(
+    int page,
+    Offset p, {
+    required InkTool tool,
+    required Color color,
+    required double width,
+    PointerKind pointer = PointerKind.laser,
+  }) {
     if (tool == InkTool.eraser) return; // el borrador va por [erase]
     if (tool == InkTool.laser) {
       laserScale = width;
+      laserKind = pointer;
       _moveLaser(page, p, force: true);
       return;
     }
@@ -237,6 +264,7 @@ class InkBoard extends ChangeNotifier {
       'x': InkStroke._r(p.dx),
       'y': InkStroke._r(p.dy),
       's': InkStroke._r(laserScale),
+      if (laserKind.wire case final k?) 'k': k,
       'ts': _r1(_laserTs),
     });
   }

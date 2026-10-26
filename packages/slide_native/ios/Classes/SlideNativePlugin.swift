@@ -35,6 +35,13 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
     private var lastVolume: Float = 0.5
     private var ignoreUntil = Date.distantPast
     private var originalVolume: Float?
+    /// Detectar cuánto se mantiene presionado (solo si hay una acción configurada para eso):
+    /// iOS no avisa al soltar, pero mientras se mantiene el volumen sigue cambiando; un rato
+    /// sin cambios = se soltó.
+    private var detectHold = false
+    private var pressUp: Bool?
+    private var releaseTimer: Timer?
+    private static let releaseGap: TimeInterval = 0.5
 
     // ---- BLE
     private var peripheral: CBPeripheralManager?
@@ -81,6 +88,10 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             result(nil)
         case "setVolumeCapture":
             setVolumeCapture((args?["enabled"] as? Bool) ?? false)
+            result(nil)
+        case "setVolumeHold":
+            detectHold = (args?["enabled"] as? Bool) ?? false
+            if !detectHold { releaseVolume() }
             result(nil)
         case "bleStart":
             bleStart()
@@ -172,6 +183,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
                 DispatchQueue.main.async { self.volumeChanged(v) }
             }
         } else {
+            releaseVolume()
             volumeObservation?.invalidate()
             volumeObservation = nil
             if let v = originalVolume { setSystemVolume(v) }
@@ -184,15 +196,39 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
 
     private func volumeChanged(_ v: Float) {
         guard captureVolume else { return }
-        // Cambios provocados por nuestro propio reset: ignorar
-        if Date() < ignoreUntil || abs(v - lastVolume) < 0.001 {
-            lastVolume = v
+        let prev = lastVolume
+        lastVolume = v
+        if abs(v - prev) < 0.001 { return }
+        let up = v > prev
+        if !detectHold {
+            // Cambios provocados por nuestro propio reset: ignorar
+            if Date() < ignoreUntil { return }
+            emit(["type": "volume", "dir": up ? "up" : "down", "phase": "down"])
+            emit(["type": "volume", "dir": up ? "up" : "down", "phase": "up"])
+            resetVolume()
             return
         }
-        let up = v > lastVolume
-        lastVolume = v
-        emit(["type": "volume", "dir": up ? "up" : "down"])
+        // Nuestro propio reset (siempre a la mitad; una pulsación nunca cae justo ahí)
+        if abs(v - 0.5) < 0.001 { return }
+        if pressUp == nil {
+            if Date() < ignoreUntil { return }
+            pressUp = up
+            emit(["type": "volume", "dir": up ? "up" : "down", "phase": "down"])
+        }
+        // Sigue presionado mientras el volumen siga cambiando
+        releaseTimer?.invalidate()
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: Self.releaseGap, repeats: false) { [weak self] _ in
+            self?.releaseVolume()
+        }
         resetVolume()
+    }
+
+    private func releaseVolume() {
+        releaseTimer?.invalidate()
+        releaseTimer = nil
+        guard let up = pressUp else { return }
+        pressUp = nil
+        emit(["type": "volume", "dir": up ? "up" : "down", "phase": "up"])
     }
 
     private func resetVolume() {

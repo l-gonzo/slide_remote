@@ -167,11 +167,14 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         if (!captureVolume) return false;
         int code = e.getKeyCode();
         if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) return false;
-        // Mantener presionado no repite: solo la primera pulsación cuenta
-        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+        // Mantener presionado no repite: se avisa al presionar (phase down) y al soltar (phase up);
+        // cuánto se mantuvo lo decide Dart (acción configurable al mantener presionado)
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0;
+        if (down || e.getAction() == KeyEvent.ACTION_UP) {
             Map<String, Object> ev = new HashMap<>();
             ev.put("type", "volume");
             ev.put("dir", code == KeyEvent.KEYCODE_VOLUME_UP ? "up" : "down");
+            ev.put("phase", down ? "down" : "up");
             emit(ev);
         }
         return true;
@@ -190,6 +193,11 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
             case "setVolumeCapture": {
                 Boolean on = call.argument("enabled");
                 captureVolume = on != null && on;
+                result.success(null);
+                return;
+            }
+            case "setVolumeHold": {
+                // Android avisa al soltar el botón: no hace falta nada (iOS sí lo necesita)
                 result.success(null);
                 return;
             }

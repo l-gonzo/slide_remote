@@ -8,9 +8,13 @@ import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
 import '../common/theme.dart';
 import 'connection_view.dart';
-import 'draw_page.dart';
+import 'draw_source.dart';
+import 'link_panel.dart';
+import 'native_bridge.dart';
+import 'orientation.dart';
 import 'remote_controller.dart';
 import 'settings_page.dart';
+import 'slide_stage.dart';
 import 'stage_widgets.dart';
 import 'timer_chip.dart';
 
@@ -22,9 +26,14 @@ import 'timer_chip.dart';
 ///  - **Presentar** (con notas): número y título de la diapositiva, notas grandes y los botones
 ///    abajo. Si la conexión se cae, las notas se quedan y aparece un aviso para reconectar.
 ///
-/// Abajo siempre está el "control": una barra de acciones (ir a, diapositiva y dibujo, notas,
-/// bloquear) y los botones de cambiar diapositiva, acomodados del lado de la mano dominante.
-/// Con el modo una mano, todo lo que se toca queda abajo.
+/// Al transmitir (modo Navegador, o WiFi con la PC proyectando con Zlide) se ve además el
+/// **escenario**: la diapositiva en vivo arriba de las notas, con las herramientas de dibujo y
+/// los enlaces y videos de la diapositiva. Todo en la misma pantalla: tomar una herramienta
+/// agranda la diapositiva; guardarla devuelve el espacio a las notas.
+///
+/// Abajo siempre está el "control": una barra de acciones (ir a, notas, bloquear) y los botones
+/// de cambiar diapositiva, acomodados del lado de la mano dominante. Con el modo una mano, todo
+/// lo que se toca queda abajo.
 class RemotePage extends StatefulWidget {
   const RemotePage({super.key});
 
@@ -44,11 +53,26 @@ class _RemotePageState extends State<RemotePage> {
   /// Se cerró el aviso "tu presentación está lista en la PC".
   bool _startDismissed = false;
 
+  /// De dónde salen la diapositiva del escenario y a dónde van los dibujos (null si no se transmite).
+  DrawSource? _src;
+  String? _srcKey;
+  final _tools = InkTools();
+
+  /// Sin conexión todavía, se pidió ver el escenario ("Ver la diapositiva y dibujar").
+  bool _wantStage = false;
+
+  /// Teléfono girado para ver la diapositiva más grande.
+  bool _landscape = false;
+  bool _lowLatency = false;
+  DateTime _lastDrawHint = DateTime.fromMillisecondsSinceEpoch(0);
+
   @override
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: c.onForeground, onPause: c.onBackground);
     _nudgeSub = c.nudges.listen(_showNudge);
+    c.addListener(_syncSource);
+    _tools.addListener(_syncLatency);
     c.init();
   }
 
@@ -56,8 +80,87 @@ class _RemotePageState extends State<RemotePage> {
   void dispose() {
     _nudgeSub?.cancel();
     _lifecycle.dispose();
+    c.removeListener(_syncSource);
+    _src?.close();
+    _tools.dispose();
+    if (_lowLatency) NativeBridge.setLowLatencyWifi(false);
+    if (_landscape) defaultOrientations();
     c.dispose();
     super.dispose();
+  }
+
+  /// Abre (o cierra) la fuente del escenario según el modo: el PDF del teléfono en modo
+  /// Navegador, o el WebSocket de la app de escritorio en modo WiFi.
+  void _syncSource() {
+    final uri = c.mode == Mode.wifi ? c.pcDrawUri : null;
+    final key = c.mode == Mode.browser && c.browser.hasPdf && !c.converting ? 'browser' : uri?.toString();
+    if (key != _srcKey) {
+      _srcKey = key;
+      final old = _src;
+      _src = key == null ? null : (uri != null ? WifiDrawSource(c, uri) : BrowserDrawSource(c));
+      old?.close();
+    }
+    if (!_stageOn) {
+      _wantStage = false;
+      _tools.putAway();
+      if (_landscape) {
+        _landscape = false;
+        defaultOrientations();
+      }
+    }
+    _syncLatency();
+  }
+
+  /// WiFi de baja latencia solo mientras se dibuja (gasta más batería).
+  void _syncLatency() {
+    final want = _stageOn && _tools.tool != null;
+    if (want == _lowLatency) return;
+    _lowLatency = want;
+    NativeBridge.setLowLatencyWifi(want);
+  }
+
+  /// Hay diapositiva que mostrar: en WiFi, solo si la PC proyecta con Zlide.
+  bool get _stageOn => switch (_src) {
+    BrowserDrawSource() => true,
+    final WifiDrawSource w => w.presenting,
+    _ => false,
+  };
+
+  void _toggleRotation() {
+    setState(() => _landscape = !_landscape);
+    if (_landscape) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    } else {
+      defaultOrientations();
+    }
+  }
+
+  /// Se tocó la diapositiva sin herramienta: explicar cómo dibujar (sin insistir).
+  void _drawHint() {
+    final now = DateTime.now();
+    if (now.difference(_lastDrawHint) < const Duration(seconds: 6)) return;
+    _lastDrawHint = now;
+    final m = ScaffoldMessenger.of(context);
+    m.hideCurrentSnackBar();
+    m.showSnackBar(
+      SnackBar(
+        content: Text(
+          t(
+            'Toma la pluma, el marcatextos o el puntero (láser, foco o lupa) para dibujar o señalar.',
+            'Pick the pen, highlighter or pointer (laser, spotlight or magnifier) to draw or point.',
+          ),
+        ),
+        duration: const Duration(milliseconds: 2200),
+      ),
+    );
+  }
+
+  /// Cambiar de diapositiva. En modo Navegador sin la PC conectada, el escenario se recorre
+  /// igual (para preparar o dibujar antes de empezar).
+  void _go(bool forward) {
+    final s = _src;
+    if (s is BrowserDrawSource && !s.connected && !c.locked) return s.go(forward);
+    c.tap(forward: forward);
   }
 
   void _showNudge(String msg) {
@@ -70,10 +173,8 @@ class _RemotePageState extends State<RemotePage> {
   bool get _connected => c.status.conn == Conn.on;
   bool get _left => c.hand == Hand.left;
 
-  bool get _canDraw =>
-      (c.mode == Mode.browser && c.browser.hasPdf && !c.converting) || (c.mode == Mode.wifi && c.pcDrawUri != null);
-
-  _View get _view => c.deck != null ? _View.notes : (_connected ? _View.ready : _View.setup);
+  _View get _view =>
+      c.deck != null ? _View.notes : (_connected || (_wantStage && _stageOn) ? _View.ready : _View.setup);
 
   /// Aviso para empezar a presentar en la PC (modo WiFi, la PC tiene la presentación elegida).
   bool get _showStart => c.pcCanStart && c.wifi.pcDeckMode == DeckMode.none && !_startDismissed;
@@ -85,26 +186,40 @@ class _RemotePageState extends State<RemotePage> {
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: Listenable.merge([c, I18n.current]),
+          listenable: Listenable.merge([c, I18n.current, _tools, if (_src != null) _src!]),
           builder: (context, _) {
             if (!c.ready) return const Center(child: CircularProgressIndicator());
             final view = _view;
             if (view != _View.notes) _notesExpanded = false;
             if (!c.pcCanStart) _startDismissed = false;
             final expanded = view == _View.notes && _notesExpanded;
+            final stage = _stageOn && view != _View.setup;
+            final drawing = stage && !expanded && _tools.tool != null;
             return PopScope(
-              // Con la pantalla bloqueada "atrás" no hace nada; con las notas expandidas, las contrae
-              canPop: !expanded && !c.locked,
+              // Con la pantalla bloqueada "atrás" no hace nada; con las notas expandidas, las
+              // contrae; con una herramienta en la mano, la guarda
+              canPop: !expanded && !c.locked && !drawing,
               onPopInvokedWithResult: (didPop, _) {
                 if (didPop) return;
                 if (c.locked) {
                   HapticFeedback.heavyImpact();
                 } else if (expanded) {
                   setState(() => _notesExpanded = false);
+                } else if (drawing) {
+                  _tools.putAway();
                 }
               },
               child: LayoutBuilder(
                 builder: (context, box) {
+                  // Teléfono acostado: su propio acomodo, también con las notas expandidas (si no, al
+                  // expandirlas volvería el de vertical, que no cabe)
+                  final lying = box.maxWidth > box.maxHeight && box.maxHeight < 520;
+                  if (stage && lying) return _stageLandscape(view, box, expanded: expanded);
+                  if (stage && !expanded) {
+                    return box.maxWidth > box.maxHeight || box.maxWidth >= Bp.expanded
+                        ? _stageWide(view, box)
+                        : _stagePortrait(view, box);
+                  }
                   // Pantalla ancha (tableta horizontal): contenido y control lado a lado.
                   // Preparar sigue en una columna: es un formulario, no gana nada con dos paneles.
                   if (box.maxWidth >= Bp.expanded && view != _View.setup) {
@@ -202,7 +317,7 @@ class _RemotePageState extends State<RemotePage> {
   );
 
   List<Widget> _banners(_View view) => [
-    if (view == _View.notes && !_connected) _reconnectBanner(),
+    if ((view == _View.notes || _stageOn) && view != _View.setup && !_connected) _reconnectBanner(),
     if (view != _View.setup && _showStart)
       IgnorePointer(
         ignoring: c.locked,
@@ -222,15 +337,19 @@ class _RemotePageState extends State<RemotePage> {
     required bool tight,
     required bool short,
     required double height,
+    bool compactPads = false,
+    bool stage = false,
   }) {
     // Siempre "anterior" y "siguiente" lado a lado, con "siguiente" del lado de la mano: el pulgar
     // los encuentra en el mismo lugar con o sin notas. Sin notas hay más espacio y crecen un poco.
     const vertical = false;
     final double padsHeight;
-    if (view == _View.ready) {
+    // Con la diapositiva en pantalla, los botones no crecen aunque no haya notas
+    if (view == _View.ready && !stage) {
       padsHeight = (height * (c.oneHand ? 0.24 : 0.2)).clamp(tight ? 88.0 : 116.0, 176.0);
     } else {
-      padsHeight = c.oneHand ? (tight ? 80.0 : 116.0) : (expanded || tight ? 64.0 : (short ? 88.0 : 100.0));
+      final compact = expanded || tight || compactPads;
+      padsHeight = c.oneHand ? (tight ? 80.0 : 116.0) : (compact ? 64.0 : (short ? 88.0 : 100.0));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -240,15 +359,15 @@ class _RemotePageState extends State<RemotePage> {
         const SizedBox(height: Sp.s + 2),
         SizedBox(
           height: padsHeight,
-          child: _pads(vertical: vertical, compact: !vertical && (expanded || tight)),
+          child: _pads(vertical: vertical, compact: !vertical && (expanded || tight || compactPads)),
         ),
       ],
     );
   }
 
-  Widget _pads({required bool vertical, bool compact = false}) => NavPads(
-    onPrev: () => c.tap(forward: false),
-    onNext: () => c.tap(forward: true),
+  Widget _pads({required bool vertical, bool compact = false, bool rail = false}) => NavPads(
+    onPrev: () => _go(false),
+    onNext: () => _go(true),
     prevPulse: c.pulsePrev,
     nextPulse: c.pulseNext,
     prevHint: c.invert ? 'VOL +' : 'VOL −',
@@ -256,6 +375,7 @@ class _RemotePageState extends State<RemotePage> {
     leftHanded: _left,
     vertical: vertical,
     compact: compact,
+    rail: rail,
     enabled: !c.locked,
     dim: !c.canSend,
   );
@@ -282,20 +402,17 @@ class _RemotePageState extends State<RemotePage> {
         tooltip: t('Ir a otra diapositiva', 'Go to another slide'),
         onTap: canJump ? _openSlideList : null,
       ),
-      if (_canDraw)
-        StageAction(
-          icon: Icons.draw_rounded,
-          label: t('Dibujar', 'Draw'),
-          tooltip: t('Ver la diapositiva y dibujar', 'View the slide and draw'),
-          onTap: _openDraw,
-        ),
       if (view == _View.notes)
         StageAction(
           icon: expanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
           label: t('Notas', 'Notes'),
           tooltip: expanded ? t('Contraer notas', 'Collapse notes') : t('Expandir notas', 'Expand notes'),
           active: expanded,
-          onTap: () => setState(() => _notesExpanded = !expanded),
+          onTap: () {
+            // Notas a lo grande: la diapositiva se esconde, así que la herramienta se guarda
+            if (!expanded) _tools.putAway();
+            setState(() => _notesExpanded = !expanded);
+          },
         ),
       if (c.oneHand) StageAction(icon: Icons.more_horiz_rounded, label: t('Más', 'More'), onTap: _openMore),
       StageAction(
@@ -309,7 +426,8 @@ class _RemotePageState extends State<RemotePage> {
 
   // ================================================================ barra superior
 
-  Widget _topBar() {
+  /// [dense]: una sola línea (teléfono acostado), sin el modo ni el detalle.
+  Widget _topBar({bool dense = false}) {
     final s = c.status;
     final dnd = c.dndState == DndState.on;
     return IgnorePointer(
@@ -318,7 +436,9 @@ class _RemotePageState extends State<RemotePage> {
         duration: Mo.of(context, Mo.med),
         opacity: c.locked ? 0.5 : 1,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Sp.m, Sp.s, Sp.xs, Sp.xs),
+          padding: dense
+              ? const EdgeInsets.fromLTRB(Sp.s, Sp.s, 0, 0)
+              : const EdgeInsets.fromLTRB(Sp.m, Sp.s, Sp.xs, Sp.xs),
           child: Row(
             children: [
               // Pastilla de conexión: estado, modo y dispositivo. Al tocarla, la hoja de conexión.
@@ -336,7 +456,7 @@ class _RemotePageState extends State<RemotePage> {
                       child: InkWell(
                         onTap: _openConnection,
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 50),
+                          constraints: BoxConstraints(minHeight: dense ? 44 : 50),
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(Sp.m + 2, Sp.xs + 2, Sp.s + 2, Sp.xs + 2),
                             child: Row(
@@ -355,15 +475,16 @@ class _RemotePageState extends State<RemotePage> {
                                         overflow: TextOverflow.ellipsis,
                                         style: Txt.text(14.5, weight: FontWeight.w700, height: 1.2),
                                       ),
-                                      Text(
-                                        [
-                                          modeName(c.mode),
-                                          if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!,
-                                        ].join(' · '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Txt.text(12, color: Pal.muted, height: 1.25),
-                                      ),
+                                      if (!dense)
+                                        Text(
+                                          [
+                                            modeName(c.mode),
+                                            if (s.subtitle != null && s.subtitle!.isNotEmpty) s.subtitle!,
+                                          ].join(' · '),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Txt.text(12, color: Pal.muted, height: 1.25),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -465,7 +586,7 @@ class _RemotePageState extends State<RemotePage> {
         const SizedBox(height: Sp.l),
         ModePicker(c: c),
         const SizedBox(height: Sp.xxl),
-        ConnectionContent(c: c, onNudge: _showNudge, onDraw: _openDraw),
+        ConnectionContent(c: c, onNudge: _showNudge, onDraw: _showStage),
         const SizedBox(height: Sp.l),
         _addNotesLink(),
       ],
@@ -587,7 +708,10 @@ class _RemotePageState extends State<RemotePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(t('Agrega tus notas', 'Add your notes'), style: Txt.text(16, weight: FontWeight.w700, height: 1.25)),
+                    Text(
+                      t('Agrega tus notas', 'Add your notes'),
+                      style: Txt.text(16, weight: FontWeight.w700, height: 1.25),
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       c.mode == Mode.wifi
@@ -622,52 +746,14 @@ class _RemotePageState extends State<RemotePage> {
     final s = c.currentSlide;
     final next = c.nextSlide;
     final total = c.deck!.length;
-    final hasNotes = s != null && s.notes.trim().isNotEmpty;
     final number = (c.slide + 1).toString().padLeft(2, '0');
     final title = s?.title.isNotEmpty == true ? s!.title : '${t('Diapositiva', 'Slide')} ${s?.number ?? c.slide + 1}';
     final slideKey = ValueKey('${c.slide}-${c.deckName}');
-    final fx = c.animProgress;
-    final steps = fx != null
-        ? Semantics(
-            label: t('Animación ${fx.step} de ${fx.total}', 'Animation ${fx.step} of ${fx.total}'),
-            excludeSemantics: true,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 4),
-              decoration: BoxDecoration(color: Pal.accentSoft, borderRadius: BorderRadius.circular(99)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.auto_awesome_motion_rounded, size: 14, color: Pal.onAccentSoft),
-                const SizedBox(width: 5),
-                Text('${fx.step}/${fx.total}', style: Txt.digits(12.5, color: Pal.onAccentSoft)),
-              ]),
-            ),
-          )
-        : null;
+    final steps = _stepsBadge();
 
     final Widget head = expanded || tight || c.oneHand
         // Expandidas, poca altura o una mano: el encabezado se reduce a una línea
-        ? Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.page, Sp.s, Sp.page, 0),
-            child: Row(
-              children: [
-                _jumpTarget(
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: Sp.s),
-                    child: Text('$number / $total', style: Txt.digits(16, color: Pal.accent)),
-                  ),
-                ),
-                const SizedBox(width: Sp.m),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Txt.text(15, weight: FontWeight.w700),
-                  ),
-                ),
-                if (steps != null) ...[const SizedBox(width: Sp.s), steps],
-              ],
-            ),
-          )
+        ? _compactHead(padding: const EdgeInsets.fromLTRB(Sp.page, Sp.s, Sp.page, 0))
         : Padding(
             padding: EdgeInsets.fromLTRB(Sp.page, short ? Sp.s : Sp.l, Sp.page, 0),
             child: Column(
@@ -713,28 +799,382 @@ class _RemotePageState extends State<RemotePage> {
       children: [
         IgnorePointer(ignoring: c.locked, child: head),
         Expanded(
-          child: ShaderMask(
-            // Desvanecer el final para que se note que hay más texto
-            shaderCallback: (r) => const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.white, Colors.white, Colors.transparent],
-              stops: [0, 0.9, 1],
-            ).createShader(r),
-            blendMode: BlendMode.dstIn,
-            // Bloqueada, las notas se siguen pudiendo desplazar (leer no cambia nada)
-            child: SingleChildScrollView(
-              key: slideKey, // al cambiar de diapositiva, regresar arriba
-              padding: EdgeInsets.fromLTRB(Sp.page, expanded || tight ? Sp.m : Sp.l + 4, Sp.page, Sp.xl),
-              child: Text(
-                hasNotes ? s.notes.trim() : t('Sin notas en esta diapositiva.', 'No notes on this slide.'),
-                style: Txt.text(c.notesFont, height: 1.5, color: hasNotes ? Pal.ink : Pal.faint),
-              ),
-            ),
-          ),
+          child: _notesText(padding: EdgeInsets.fromLTRB(Sp.page, expanded || tight ? Sp.m : Sp.l + 4, Sp.page, Sp.xl)),
         ),
         if (next != null && showNext) _nextLine(next, compact: expanded || tight, short: short),
       ],
+    );
+  }
+
+  /// Las notas de la diapositiva actual, desplazables, con el final desvanecido.
+  Widget _notesText({required EdgeInsets padding, double scale = 1}) {
+    final s = c.currentSlide;
+    final hasNotes = s != null && s.notes.trim().isNotEmpty;
+    return ShaderMask(
+      // Desvanecer el final para que se note que hay más texto
+      shaderCallback: (r) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.white, Colors.white, Colors.transparent],
+        stops: [0, 0.9, 1],
+      ).createShader(r),
+      blendMode: BlendMode.dstIn,
+      // Bloqueada, las notas se siguen pudiendo desplazar (leer no cambia nada)
+      child: SingleChildScrollView(
+        key: ValueKey('${c.slide}-${c.deckName}'), // al cambiar de diapositiva, regresar arriba
+        padding: padding,
+        child: AnimatedDefaultTextStyle(
+          duration: Mo.of(context, Mo.med),
+          curve: Mo.curve,
+          style: Txt.text(c.notesFont * scale, height: 1.5, color: hasNotes ? Pal.ink : Pal.faint),
+          child: Text(hasNotes ? s.notes.trim() : t('Sin notas en esta diapositiva.', 'No notes on this slide.')),
+        ),
+      ),
+    );
+  }
+
+  /// "2/5": paso de animación de la diapositiva, si tiene.
+  Widget? _stepsBadge() {
+    final fx = c.animProgress;
+    if (fx == null) return null;
+    return Semantics(
+      label: t('Animación ${fx.step} de ${fx.total}', 'Animation ${fx.step} of ${fx.total}'),
+      excludeSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: Sp.s + 2, vertical: 4),
+        decoration: BoxDecoration(color: Pal.accentSoft, borderRadius: BorderRadius.circular(99)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome_motion_rounded, size: 14, color: Pal.onAccentSoft),
+            const SizedBox(width: 5),
+            Text('${fx.step}/${fx.total}', style: Txt.digits(12.5, color: Pal.onAccentSoft)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Encabezado de una línea: "03 / 18", el título y el paso de animación. Tocar el número
+  /// abre la lista para saltar. Sin notas, la página que se transmite.
+  Widget _compactHead({required EdgeInsets padding}) {
+    final d = c.deck;
+    final s = c.currentSlide;
+    final page = _knownPage();
+    final String counter;
+    final String title;
+    if (d != null) {
+      counter = '${(c.slide + 1).toString().padLeft(2, '0')} / ${d.length}';
+      title = s?.title.isNotEmpty == true ? s!.title : '${t('Diapositiva', 'Slide')} ${s?.number ?? c.slide + 1}';
+    } else {
+      final p = page ?? (_src != null ? (_src!.page, 0) : null);
+      counter = p == null ? '' : (p.$2 > 0 ? '${p.$1.toString().padLeft(2, '0')} / ${p.$2}' : '${p.$1}');
+      title = _connected ? t('Presentando', 'Presenting') : t('Sin conectar', 'Not connected');
+    }
+    final steps = _stepsBadge();
+    return IgnorePointer(
+      ignoring: c.locked,
+      child: Padding(
+        padding: padding,
+        child: Row(
+          children: [
+            if (counter.isNotEmpty) ...[
+              _jumpTarget(
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Sp.s, horizontal: 2),
+                  child: Text(counter, style: Txt.digits(16, color: Pal.accent)),
+                ),
+              ),
+              const SizedBox(width: Sp.m),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Txt.text(15, weight: FontWeight.w700, color: d != null ? Pal.ink : Pal.muted),
+              ),
+            ),
+            if (steps != null) ...[const SizedBox(width: Sp.s), steps],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================================================================ escenario (diapositiva en vivo)
+
+  /// Teléfono en vertical: encabezado, diapositiva, herramientas, notas y el control. Con una
+  /// herramienta en la mano la diapositiva gana ancho, las notas se achican y los botones de
+  /// cambiar diapositiva se compactan.
+  Widget _stagePortrait(_View view, BoxConstraints box) {
+    final tight = box.maxHeight < 520;
+    final drawing = _tools.tool != null;
+    final src = _src!;
+    final next = view == _View.notes ? c.nextSlide : null;
+    return MaxWidth(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _topBar(),
+          ..._banners(view),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, b) {
+                // La diapositiva crece al dibujar, pero siempre deja unas líneas de notas
+                final rest = 40 + (drawing ? 112 : 68) + (SlideExtras.has(src) ? 48 : 0) + 72;
+                final slideMax = (b.maxHeight - rest).clamp(120.0, b.maxHeight * (drawing ? 0.56 : 0.42));
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _compactHead(padding: const EdgeInsets.fromLTRB(Sp.page, Sp.xs, Sp.page, Sp.xs)),
+                    AnimatedPadding(
+                      duration: Mo.of(context, Mo.med),
+                      curve: Mo.curve,
+                      padding: EdgeInsets.symmetric(horizontal: drawing ? Sp.s : Sp.l),
+                      child: _slideArea(src, maxHeight: slideMax, room: b.maxHeight - 96), // encabezado y "Sigue"
+                    ),
+                    if (src.link == null) ...[
+                      const SizedBox(height: Sp.s),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.l),
+                        child: _inkToolbar(src),
+                      ),
+                    ],
+                    if (SlideExtras.has(src))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, 0, 0),
+                        child: IgnorePointer(
+                          ignoring: c.locked,
+                          child: SlideExtras(src: src),
+                        ),
+                      ),
+                    Expanded(child: _stageBelow(view, scale: drawing ? 0.8 : 0.92)),
+                    if (next != null && !drawing && !tight) _nextLine(next, compact: true, short: true),
+                  ],
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, Sp.m),
+            child: _control(
+              view,
+              expanded: false,
+              compactPads: drawing,
+              stage: true,
+              tight: tight,
+              short: true,
+              height: box.maxHeight,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tableta (o ventana ancha y alta): la diapositiva lo más grande posible a un lado; notas,
+  /// acciones y botones del lado de la mano.
+  Widget _stageWide(_View view, BoxConstraints box) {
+    final src = _src!;
+    final next = view == _View.notes ? c.nextSlide : null;
+    final content = Expanded(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(_left ? Sp.s : Sp.l, Sp.xs, _left ? Sp.l : Sp.s, Sp.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _compactHead(padding: const EdgeInsets.only(bottom: Sp.xs)),
+            Expanded(
+              child: Center(child: _slideArea(src, maxHeight: double.infinity)),
+            ),
+            if (src.link == null) ...[
+              const SizedBox(height: Sp.s),
+              Center(
+                child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: _inkToolbar(src)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    final panel = SizedBox(
+      width: (box.maxWidth * 0.36).clamp(300.0, 420.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (SlideExtras.has(src))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, 0, 0),
+              child: IgnorePointer(
+                ignoring: c.locked,
+                child: SlideExtras(src: src),
+              ),
+            ),
+          Expanded(child: _stageBelow(view)),
+          if (next != null) _nextLine(next, compact: false, short: true),
+          Padding(
+            padding: EdgeInsets.fromLTRB(_left ? Sp.l : 0, Sp.s, _left ? 0 : Sp.l, Sp.m),
+            child: _control(
+              view,
+              expanded: false,
+              compactPads: true,
+              stage: true,
+              tight: false,
+              short: true,
+              height: box.maxHeight,
+            ),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _topBar(),
+        ..._banners(view),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: _left ? [panel, content] : [content, panel],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Teléfono acostado (poca altura). Tres franjas, de afuera hacia la mano:
+  ///  - la diapositiva con sus herramientas, del alto completo (su ancho sale de ese alto);
+  ///  - las notas, con el estado de la conexión y el número arriba, en una línea cada uno;
+  ///  - un riel al borde, donde cae el pulgar: acciones arriba y los botones de cambiar
+  ///    diapositiva abajo, a todo lo que queda de alto.
+  /// "Notas" esconde la diapositiva (sin volver a vertical) y las notas toman su lugar. Al
+  /// dibujar, la diapositiva se queda igual y la fila de colores le quita un poco de alto.
+  Widget _stageLandscape(_View view, BoxConstraints box, {required bool expanded}) {
+    final src = _src!;
+    final drawing = _tools.tool != null;
+    final next = view == _View.notes ? c.nextSlide : null;
+    const railW = 96.0;
+    // Ancho de la diapositiva: el que corresponde a su alto, sin pasar de un 58 % (las notas
+    // necesitan líneas legibles); al dibujar o con un enlace abierto, las notas ceden más
+    final img = src.image(src.page);
+    final aspect = img != null ? img.width / img.height : 16 / 9;
+    final toolbarH = src.link != null ? 0.0 : (drawing ? 112.0 : 68.0);
+    final free = box.maxWidth - railW;
+    final maxW = drawing || src.link != null ? free - 240 : free * 0.58;
+    final slideW = ((box.maxHeight - Sp.s * 2 - toolbarH) * aspect).clamp(220.0, maxW);
+    final slide = SizedBox(
+      width: slideW + Sp.s * 2,
+      child: Padding(
+        padding: const EdgeInsets.all(Sp.s),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Center(child: _slideArea(src, maxHeight: double.infinity)),
+            ),
+            if (src.link == null) ...[const SizedBox(height: Sp.s), _inkToolbar(src)],
+          ],
+        ),
+      ),
+    );
+    final notes = Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _topBar(dense: true),
+          _compactHead(padding: const EdgeInsets.fromLTRB(Sp.l, Sp.xs, Sp.s, 0)),
+          if (SlideExtras.has(src))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.l, Sp.xs, 0, 0),
+              child: IgnorePointer(
+                ignoring: c.locked,
+                child: SlideExtras(src: src),
+              ),
+            ),
+          Expanded(child: _stageBelow(view, scale: expanded ? 1 : 0.9)),
+          if (next != null && !drawing) _nextLine(next, compact: true, short: true),
+          // Bloqueada: el aviso va aquí, a lo ancho; el riel queda solo con los botones
+          if (c.locked)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.s, Sp.xs, Sp.s, Sp.s),
+              child: LockBar(onUnlock: () => c.setLocked(false)),
+            ),
+        ],
+      ),
+    );
+    final actions = _actions(view, expanded: expanded);
+    final rail = SizedBox(
+      width: railW,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(_left ? Sp.s : 0, Sp.s, _left ? 0 : Sp.s, Sp.s),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!c.locked) ...[
+              ActionBar(
+                actions: actions,
+                leftHanded: _left,
+                vertical: true,
+                // Con poco alto o muchas acciones, solo íconos (el nombre sale al mantener presionado)
+                dense: box.maxHeight < 400 || actions.length > 3,
+              ),
+              const SizedBox(height: Sp.s),
+            ],
+            Expanded(child: _pads(vertical: true, rail: true)),
+          ],
+        ),
+      ),
+    );
+    final strips = [if (!expanded) slide, notes, rail];
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: _left ? strips.reversed.toList() : strips);
+  }
+
+  /// La diapositiva con lo dibujado; con un enlace abierto en la PC, sus controles en su lugar.
+  /// [room]: todo el alto que queda (el panel de un enlace puede usar más que la diapositiva).
+  Widget _slideArea(DrawSource src, {required double maxHeight, double room = double.infinity}) {
+    if (src.link case final link?) {
+      // Con un enlace abierto no hay herramientas de dibujo: el panel toma ese espacio, sin
+      // pasarse del que hay en pantallas pequeñas
+      final h = maxHeight.isFinite ? (maxHeight + 60).clamp(300.0, 420.0).clamp(0.0, room) : null;
+      return SizedBox(
+        height: h,
+        child: IgnorePointer(
+          ignoring: c.locked,
+          child: LinkPanel(src: src, link: link),
+        ),
+      );
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: SlideCanvas(src: src, tools: _tools, enabled: !c.locked, onIdleTouch: _drawHint),
+    );
+  }
+
+  Widget _inkToolbar(DrawSource src) => IgnorePointer(
+    ignoring: c.locked,
+    child: AnimatedOpacity(
+      duration: Mo.of(context, Mo.med),
+      opacity: c.locked ? 0.4 : 1,
+      child: InkToolbar(
+        src: src,
+        tools: _tools,
+        leftHanded: _left,
+        onRotate: isTablet ? null : _toggleRotation,
+        landscape: _landscape,
+      ),
+    ),
+  );
+
+  /// Debajo de la diapositiva: las notas o, sin ellas, cómo agregarlas.
+  /// [scale]: tamaño de las notas respecto al elegido en Ajustes (comparten la pantalla).
+  Widget _stageBelow(_View view, {double scale = 0.92}) {
+    if (view == _View.notes) {
+      return _notesText(padding: const EdgeInsets.fromLTRB(Sp.page, Sp.m, Sp.page, Sp.l), scale: scale);
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(Sp.l, Sp.m, Sp.l, Sp.l),
+      child: IgnorePointer(ignoring: c.locked, child: _addNotesLink()),
     );
   }
 
@@ -751,7 +1191,10 @@ class _RemotePageState extends State<RemotePage> {
       child: Text.rich(
         TextSpan(
           children: [
-            TextSpan(text: t('Sigue', 'Next'), style: Txt.text(14, color: Pal.muted)),
+            TextSpan(
+              text: t('Sigue', 'Next'),
+              style: Txt.text(14, color: Pal.muted),
+            ),
             // Ícono y no el carácter "→": así se ve igual con cualquier tipografía
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
@@ -1018,7 +1461,7 @@ class _RemotePageState extends State<RemotePage> {
                     onNudge: _showNudge,
                     onDraw: () {
                       Navigator.pop(ctx);
-                      _openDraw();
+                      _showStage();
                     },
                   ),
                 ],
@@ -1092,16 +1535,19 @@ class _RemotePageState extends State<RemotePage> {
     );
   }
 
-  void _openDraw() {
-    final wifiUri = c.mode == Mode.wifi ? c.pcDrawUri : null;
-    if (c.mode == Mode.wifi && wifiUri == null) {
-      _showNudge(t('Conéctate a la PC primero', 'Connect to the computer first'));
+  /// "Ver la diapositiva y dibujar": el escenario, aunque la PC todavía no esté conectada.
+  void _showStage() {
+    if (!_stageOn) {
+      _showNudge(
+        c.mode == Mode.wifi
+            ? t('La PC tiene que proyectar con Zlide', 'The computer has to present with Zlide')
+            : t('Primero elige tu presentación', 'Choose your presentation first'),
+      );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => wifiUri != null ? DrawPage.wifi(c: c, uri: wifiUri) : DrawPage(c: c),
-      ),
-    );
+    setState(() {
+      _wantStage = true;
+      _notesExpanded = false;
+    });
   }
 }

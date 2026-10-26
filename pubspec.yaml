@@ -1,7 +1,7 @@
 name: slide_remote
 description: Zlide — cambia las diapositivas con los botones de volumen del teléfono.
 publish_to: none
-version: 2.4.0+6
+version: 2.5.0+7
 
 environment:
   sdk: ^3.8.0

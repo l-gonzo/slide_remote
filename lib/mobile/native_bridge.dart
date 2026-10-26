@@ -12,7 +12,7 @@ abstract final class NativeBridge {
 
   static Stream<Map<String, Object?>>? _stream;
 
-  /// Eventos: {type: volume, dir: up|down}, {type: hid, state, name, address, message},
+  /// Eventos: {type: volume, dir: up|down, phase: down|up} (al presionar y al soltar), {type: hid, state, name, address, message},
   /// {type: ble, state, centrals}, {type: discoverable, ok}.
   static Stream<Map<String, Object?>> get events => _stream ??= _events
       .receiveBroadcastStream()
@@ -31,6 +31,10 @@ abstract final class NativeBridge {
   }
 
   static Future<void> setVolumeCapture(bool on) => call('setVolumeCapture', {'enabled': on});
+
+  /// Hay una acción al mantener presionado un botón de volumen: iOS empieza a medir cuánto se
+  /// mantiene (no avisa al soltar; lo deduce). Android siempre avisa al soltar.
+  static Future<void> setVolumeHold(bool on) => call('setVolumeHold', {'enabled': on});
 
   /// Android: WiFi sin ahorro de energía mientras se dibuja (si no, los paquetes salen a tirones).
   static Future<void> setLowLatencyWifi(bool on) => call('setLowLatencyWifi', {'enabled': on});

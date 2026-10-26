@@ -65,6 +65,16 @@
   #openNo { background: transparent; color: var(--muted); }
   #laser { position: absolute; left: 0; top: 0; display: none; border-radius: 50%; pointer-events: none;
     will-change: transform; }
+  /* Foco: un círculo transparente cuya sombra enorme oscurece todo lo demás */
+  #spot { position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 50%; pointer-events: none;
+    will-change: transform; opacity: 0; transition: opacity .18s ease-out;
+    box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .74), inset 0 0 18px 6px rgba(0, 0, 0, .74); }
+  #spot.on { opacity: 1; }
+  /* Lupa: un trozo de la diapositiva agrandado debajo del dedo */
+  #lens { position: absolute; left: 0; top: 0; display: none; border-radius: 50%; overflow: hidden; pointer-events: none;
+    will-change: transform; background: #000; border: 3px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .45), 0 10px 34px rgba(0, 0, 0, .55); }
+  #lensC { width: 100%; height: 100%; }
   #empty { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
     justify-content: center; gap: 14px; text-align: center; padding: 24px; background: #0b0d12; }
   #empty.show { display: flex; }
@@ -89,7 +99,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><div id="wrap"><canvas id="c"></canvas><iframe id="anim" tabindex="-1" aria-hidden="true"></iframe><div id="ov"></div><canvas id="ink"></canvas><canvas id="live"></canvas><div id="laser"></div></div></div>
+<div id="stage"><div id="wrap"><canvas id="c"></canvas><iframe id="anim" tabindex="-1" aria-hidden="true"></iframe><div id="ov"></div><canvas id="ink"></canvas><canvas id="live"></canvas><div id="laser"></div><div id="spot"></div><div id="lens"><canvas id="lensC"></canvas></div></div></div>
 <div id="linkView"><div id="linkBar"><span class="dot"></span><span id="linkHost"></span><span id="linkUrl"></span>
   <button id="linkWin" type="button">Abrir original</button><button id="linkClose" type="button" aria-label="Cerrar">✕</button></div>
   <iframe id="linkFrame" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe></div>
@@ -474,9 +484,15 @@
   const liveCanvas = document.getElementById('live');
   const liveCtx = liveCanvas.getContext('2d');
   const laserEl = document.getElementById('laser');
+  const spotEl = document.getElementById('spot');
+  const lensEl = document.getElementById('lens');
+  const lensC = document.getElementById('lensC');
+  const lensCtx = lensC.getContext('2d');
+  const ZOOM = 2; // aumento de la lupa
   const inkPages = new Map(); // página -> [{id, tool, color, w, pts: [x, y, x, y, …], _t: [ts por punto]}]
-  let laser = null; // {page, x, y, s (tamaño)}: lo que se ve ahora
-  const laserQ = []; // {t, page, x, y, s, off}: lo que falta mostrar
+  // k: 'laser' (punto rojo), 'spot' (foco) o 'zoom' (lupa); sin k (versión anterior), láser
+  let laser = null; // {page, x, y, s (tamaño), k}: lo que se ve ahora
+  const laserQ = []; // {t, page, x, y, s, k, off}: lo que falta mostrar
   let committed = 0; // trazos de la página mostrada ya pintados en #ink
 
   // Reloj de reproducción, en la hora del teléfono
@@ -551,7 +567,7 @@
       const b = laserQ[1];
       if (b && !b.off && b.page === a.page) {
         const k = (pt - a.t) / (b.t - a.t);
-        laser = { page: a.page, s: b.s, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+        laser = { page: a.page, s: b.s, k: b.k, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
       } else {
         laser = a;
       }
@@ -575,14 +591,28 @@
     if (busy) kick();
   }
 
-  let laserR = 0;
+  let laserR = 0, pointR = 0;
   function placeLaser() {
-    if (!laser || laser.page !== shown || !doc || !inkCanvas.width) {
-      laserEl.style.display = 'none';
-      return;
-    }
+    const k = laser && laser.page === shown && doc && inkCanvas.width ? laser.k : null;
+    laserEl.style.display = k === 'laser' ? 'block' : 'none';
+    spotEl.classList.toggle('on', k === 'spot');
+    lensEl.style.display = k === 'zoom' ? 'block' : 'none';
+    if (!k) return;
     const cssW = parseFloat(inkCanvas.style.width), cssH = parseFloat(inkCanvas.style.height);
     const dpr = inkCanvas.width / cssW;
+    if (k !== 'laser') {
+      // Foco y lupa: el mismo radio que en el teléfono (pointerRadius en slide_stage.dart)
+      const r = cssW * 0.075 * Math.sqrt(laser.s);
+      const x = laser.x * cssW, y = laser.y * cssH;
+      if (r !== pointR) {
+        pointR = r;
+        spotEl.style.width = spotEl.style.height = lensEl.style.width = lensEl.style.height = (2 * r) + 'px';
+      }
+      const el = k === 'spot' ? spotEl : lensEl;
+      el.style.transform = `translate3d(${x - r}px, ${y - r}px, 0)`;
+      if (k === 'zoom') drawLens(x, y, r, dpr);
+      return;
+    }
     const r = (inkCanvas.width * 0.012 + 4) * laser.s / dpr;
     if (r !== laserR) {
       laserR = r;
@@ -594,8 +624,24 @@
     laserEl.style.display = 'block';
   }
 
+  /// La lupa: lo que está a r/ZOOM del centro (la diapositiva y lo dibujado) llena el círculo.
+  function drawLens(x, y, r, dpr) {
+    const n = Math.max(1, Math.round(2 * r * dpr));
+    if (lensC.width !== n) lensC.width = lensC.height = n;
+    lensCtx.fillStyle = '#000';
+    lensCtx.fillRect(0, 0, n, n);
+    const sr = r / ZOOM, cssW = parseFloat(inkCanvas.style.width);
+    const layers = [canvas];
+    if (!document.body.classList.contains('inkOff')) layers.push(inkCanvas, liveCanvas);
+    for (const c of layers) {
+      if (!c.width) continue;
+      const f = c.width / cssW; // píxeles de esa capa por píxel CSS
+      lensCtx.drawImage(c, (x - sr) * f, (y - sr) * f, 2 * sr * f, 2 * sr * f, 0, 0, n, n);
+    }
+  }
+
   function onLaser(m) {
-    const q = { page: m.page, x: m.x, y: m.y, s: m.s || 1, off: !!m.off };
+    const q = { page: m.page, x: m.x, y: m.y, s: m.s || 1, k: m.k || 'laser', off: !!m.off };
     if (m.ts == null) {
       laserQ.length = 0;
       laser = q.off ? null : q;

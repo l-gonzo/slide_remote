@@ -30,26 +30,40 @@ class StageAction {
 /// Barra de acciones encima de los botones de cambiar diapositiva. [leftHanded] invierte el
 /// orden: lo primero de [actions] queda más cerca del pulgar.
 class ActionBar extends StatelessWidget {
-  const ActionBar({super.key, required this.actions, required this.leftHanded, this.dense = false});
+  const ActionBar({
+    super.key,
+    required this.actions,
+    required this.leftHanded,
+    this.dense = false,
+    this.vertical = false,
+  });
   final List<StageAction> actions;
   final bool leftHanded;
 
   /// Solo íconos (poca altura).
   final bool dense;
 
+  /// En columna (riel del teléfono acostado): lo primero de [actions] queda abajo, junto a
+  /// los botones de cambiar diapositiva.
+  final bool vertical;
+
   @override
   Widget build(BuildContext context) {
     // Lo más usado, del lado de la mano: a la derecha para diestros
-    final ordered = leftHanded ? actions : actions.reversed.toList();
+    final ordered = vertical || !leftHanded ? actions.reversed.toList() : actions;
     return Container(
       padding: const EdgeInsets.all(Sp.xs),
       decoration: BoxDecoration(
         color: Pal.raise,
         borderRadius: BorderRadius.circular(Rad.l),
       ),
-      child: Row(children: [
-        for (final a in ordered) Expanded(child: _ActionButton(a, dense: dense)),
-      ]),
+      child: vertical
+          ? Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final a in ordered) _ActionButton(a, dense: dense),
+            ])
+          : Row(children: [
+              for (final a in ordered) Expanded(child: _ActionButton(a, dense: dense)),
+            ]),
     );
   }
 }
@@ -246,6 +260,9 @@ enum PadLayout {
 
   /// Grande (sin notas).
   big,
+
+  /// Angosto y alto (riel del teléfono acostado): flecha grande y el texto debajo.
+  rail,
 }
 
 /// Botones "anterior" y "siguiente". En fila (debajo de las notas) "siguiente" es ancho y queda
@@ -262,6 +279,7 @@ class NavPads extends StatelessWidget {
     required this.leftHanded,
     this.vertical = false,
     this.compact = false,
+    this.rail = false,
     this.enabled = true,
     this.dim = false,
   });
@@ -272,6 +290,9 @@ class NavPads extends StatelessWidget {
   final bool leftHanded;
   final bool vertical;
   final bool compact;
+
+  /// En columna angosta (riel del teléfono acostado).
+  final bool rail;
 
   /// false = no responden (pantalla bloqueada).
   final bool enabled;
@@ -287,7 +308,7 @@ class NavPads extends StatelessWidget {
       icon: Icons.chevron_left_rounded,
       hint: prevHint,
       pulse: prevPulse,
-      layout: vertical ? PadLayout.compact : PadLayout.icon,
+      layout: rail ? PadLayout.icon : (vertical ? PadLayout.compact : PadLayout.icon),
       onTap: onPrev,
     );
     final next = NavPad(
@@ -296,10 +317,10 @@ class NavPads extends StatelessWidget {
       icon: Icons.arrow_forward_rounded,
       hint: nextHint,
       pulse: nextPulse,
-      layout: vertical ? PadLayout.big : (compact ? PadLayout.compact : PadLayout.wide),
+      layout: rail ? PadLayout.rail : (vertical ? PadLayout.big : (compact ? PadLayout.compact : PadLayout.wide)),
       onTap: onNext,
     );
-    final Widget body = vertical
+    final Widget body = vertical || rail
         ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(flex: 2, child: next),
             const SizedBox(height: Sp.s + 2),
@@ -420,6 +441,21 @@ class _NavPadState extends State<NavPad> with SingleTickerProviderStateMixin {
   Widget _content(Color fg) {
     final hint = Text(widget.hint, style: Txt.digits(12, color: fg.withValues(alpha: 0.75), weight: FontWeight.w500));
     switch (widget.layout) {
+      case PadLayout.rail:
+        return Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.all(Sp.s),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(widget.icon, size: 40, color: fg),
+                const SizedBox(height: Sp.xs),
+                Text(widget.label, style: Txt.title(17, color: fg)),
+                hint,
+              ]),
+            ),
+          ),
+        );
       case PadLayout.icon:
         return Center(child: Icon(widget.icon, size: 34, color: fg));
       case PadLayout.compact:

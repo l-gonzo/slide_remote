@@ -7,7 +7,7 @@ import 'stage_widgets.dart';
 import 'timer_chip.dart';
 
 /// Versión que se muestra en "Acerca de" (la misma de pubspec.yaml).
-const kAppVersion = '2.4.0';
+const kAppVersion = '2.5.0';
 
 /// Ajustes: una pantalla completa con grupos, de lo que más se usa al presentar a lo menos.
 class SettingsPage extends StatelessWidget {
@@ -39,7 +39,7 @@ class SettingsPage extends StatelessWidget {
               children: [
                 _presenting(context),
                 const SizedBox(height: Sp.xl),
-                _buttons(),
+                _buttons(context),
                 const SizedBox(height: Sp.xl),
                 _notes(context),
                 const SizedBox(height: Sp.xl),
@@ -124,8 +124,10 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buttons() => Panel(
+  Widget _buttons(BuildContext context) => Panel(
         title: t('Botones de volumen', 'Volume buttons'),
+        footer: t('Con una acción al mantener presionado, ese botón cambia de diapositiva al soltarlo.',
+            'With a hold action, that button changes the slide when you release it.'),
         children: [
           SwitchRow(
             icon: Icons.swap_vert_rounded,
@@ -141,8 +143,70 @@ class SettingsPage extends StatelessWidget {
             value: c.arrows,
             onChanged: c.setArrows,
           ),
+          _holdRow(context, up: true),
+          _holdRow(context, up: false),
         ],
       );
+
+  static String _holdName(HoldAction a) => switch (a) {
+        HoldAction.none => t('Nada', 'Nothing'),
+        HoldAction.first => t('Ir a la primera diapositiva', 'Go to the first slide'),
+        HoldAction.last => t('Ir a la última diapositiva', 'Go to the last slide'),
+        HoldAction.timer => t('Iniciar o pausar el cronómetro', 'Start or pause the timer'),
+        HoldAction.lock => t('Bloquear o desbloquear la pantalla', 'Lock or unlock the screen'),
+        HoldAction.ink => t('Ocultar o mostrar las anotaciones', 'Hide or show annotations'),
+      };
+
+  static IconData _holdIcon(HoldAction a) => switch (a) {
+        HoldAction.none => Icons.block_rounded,
+        HoldAction.first => Icons.first_page_rounded,
+        HoldAction.last => Icons.last_page_rounded,
+        HoldAction.timer => Icons.timer_outlined,
+        HoldAction.lock => Icons.lock_outline_rounded,
+        HoldAction.ink => Icons.visibility_off_outlined,
+      };
+
+  /// Acción al mantener presionado volumen + ([up]) o volumen −.
+  Widget _holdRow(BuildContext context, {required bool up}) {
+    final title = up
+        ? t('Mantener presionado volumen +', 'Hold volume +')
+        : t('Mantener presionado volumen −', 'Hold volume −');
+    final current = up ? c.holdUp : c.holdDown;
+    return SettingRow(
+      icon: up ? Icons.volume_up_outlined : Icons.volume_down_outlined,
+      title: title,
+      subtitle: _holdName(current),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (ctx) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: Sp.l),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Sp.page, 0, Sp.page, Sp.s),
+                child: Text(title, style: Txt.title(24)),
+              ),
+              for (final a in HoldAction.values)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: Sp.page),
+                  leading: Icon(_holdIcon(a), color: a == current ? Pal.accent : Pal.muted),
+                  title: Text(_holdName(a)),
+                  trailing: a == current ? Icon(Icons.check_rounded, color: Pal.accent) : null,
+                  selected: a == current,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    c.setHold(up: up, action: a);
+                  },
+                ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------- notas
 

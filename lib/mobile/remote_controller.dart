@@ -26,6 +26,9 @@ enum Mode { bluetooth, wifi, browser }
 /// Mano con la que se sostiene el teléfono: los controles se acomodan de ese lado.
 enum Hand { right, left }
 
+/// Qué hace mantener presionado un botón de volumen (además de cambiar de diapositiva al tocarlo).
+enum HoldAction { none, first, last, timer, lock, ink }
+
 /// "No molestar" al presentar: activo, falta el permiso, o el sistema no lo permite (iOS).
 enum DndState { off, on, needsAccess, unsupported }
 
@@ -76,6 +79,10 @@ class RemoteController extends ChangeNotifier {
   Mode mode = Mode.bluetooth;
   bool invert = false;
   bool arrows = false;
+
+  /// Al mantener presionado volumen + y volumen − (el botón físico, aunque esté invertido).
+  HoldAction holdUp = HoldAction.none;
+  HoldAction holdDown = HoldAction.none;
 
   // ---- al presentar
   /// Mano dominante: los botones y acciones se acomodan de ese lado.
@@ -235,6 +242,10 @@ class RemoteController extends ChangeNotifier {
     mode = Mode.values.firstWhere((m) => m.name == _prefs.getString('mode'), orElse: () => Mode.bluetooth);
     invert = _prefs.getBool('invert') ?? false;
     arrows = _prefs.getBool('arrows') ?? false;
+    HoldAction hold(String key) =>
+        HoldAction.values.firstWhere((a) => a.name == _prefs.getString(key), orElse: () => HoldAction.none);
+    holdUp = hold('hold_up');
+    holdDown = hold('hold_down');
     hand = _prefs.getString('hand') == 'left' ? Hand.left : Hand.right;
     oneHand = _prefs.getBool('one_hand') ?? false;
     tapGuard = _prefs.getBool('tap_guard') ?? true;
@@ -269,6 +280,7 @@ class RemoteController extends ChangeNotifier {
   @override
   void dispose() {
     _nativeSub?.cancel();
+    _holdTimer?.cancel();
     if (dndState == DndState.on) NativeBridge.setDnd(false);
     if (locked) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     wifi.dispose();
@@ -284,6 +296,7 @@ class RemoteController extends ChangeNotifier {
     // Diálogos del sistema (permisos, "hacer visible") también disparan onResume: ignorar
     if (!_ready || _foreground) return;
     _foreground = true;
+    await NativeBridge.setVolumeHold(holdUp != HoldAction.none || holdDown != HoldAction.none);
     await NativeBridge.setVolumeCapture(true);
     await WakelockPlus.enable();
     if (locked) await _immersive(true);
@@ -295,6 +308,8 @@ class RemoteController extends ChangeNotifier {
   Future<void> onBackground() async {
     if (!_ready || !_foreground) return;
     _foreground = false;
+    _holdTimer?.cancel();
+    _pressed = null;
     await NativeBridge.setVolumeCapture(false);
     await WakelockPlus.disable();
     await _stopTransports(keepBrowser: true);
@@ -341,6 +356,104 @@ class RemoteController extends ChangeNotifier {
   // ================================================================ envío
 
   void onVolume(bool up) => send(forward: invert ? !up : up);
+
+  /// Cuánto hay que mantener presionado un botón de volumen para su acción.
+  static const _holdTime = Duration(milliseconds: 600);
+  Timer? _holdTimer;
+
+  /// Botón con acción al mantener que está presionado ahora (true = volumen +).
+  bool? _pressed;
+
+  /// Ya se hizo la acción de mantener: al soltar no cambia de diapositiva.
+  bool _held = false;
+
+  /// [phase]: 'down' al presionar, 'up' al soltar. Sin acción al mantener, la diapositiva cambia
+  /// al presionar (sin esperar); con acción, al soltar antes de [_holdTime].
+  void _onVolumeKey(bool up, Object? phase) {
+    if (phase == 'up') {
+      if (_pressed != up) return;
+      _pressed = null;
+      _holdTimer?.cancel();
+      if (!_held) onVolume(up);
+      _held = false;
+      return;
+    }
+    final action = up ? holdUp : holdDown;
+    // Sin phase: plugin nativo anterior, que solo avisa al presionar
+    if (action == HoldAction.none || phase == null) return onVolume(up);
+    if (_pressed != null) return;
+    _pressed = up;
+    _held = false;
+    _holdTimer?.cancel();
+    _holdTimer = Timer(_holdTime, () {
+      _held = true;
+      HapticFeedback.heavyImpact();
+      _runHold(action);
+    });
+  }
+
+  Future<void> _runHold(HoldAction action) async {
+    switch (action) {
+      case HoldAction.none:
+        return;
+      case HoldAction.first:
+        await _goToEdge(last: false);
+      case HoldAction.last:
+        await _goToEdge(last: true);
+      case HoldAction.timer:
+        timer.toggle();
+        _nudge(timer.running ? t('Cronómetro en marcha', 'Timer running') : t('Cronómetro en pausa', 'Timer paused'));
+      case HoldAction.lock:
+        await setLocked(!locked);
+        _nudge(locked ? t('Pantalla bloqueada', 'Screen locked') : t('Pantalla desbloqueada', 'Screen unlocked'));
+      case HoldAction.ink:
+        final ink = _activeInk;
+        if (ink == null) {
+          return _nudge(t('No hay anotaciones en la PC', 'No annotations on the computer'));
+        }
+        ink.setVisible(!ink.visible);
+        _nudge(ink.visible
+            ? t('Anotaciones visibles en la PC', 'Annotations shown on the computer')
+            : t('Anotaciones ocultas en la PC', 'Annotations hidden on the computer'));
+    }
+  }
+
+  /// Dibujos que ve el público ahora: los del modo Navegador o los de la proyección en la PC.
+  InkBoard? get _activeInk => switch (mode) {
+        Mode.browser when browser.hasPdf => browser.ink,
+        Mode.wifi when pcPresenting && wifiInkSink != null => wifiInk,
+        _ => null,
+      };
+
+  /// Ir a la primera o a la última diapositiva.
+  Future<void> _goToEdge({required bool last}) async {
+    final total = exactTotal;
+    if (total > 0) return goToPage(last ? total : 1);
+    final d = deck;
+    if (d != null && d.isNotEmpty) return goToSlide(last ? d.length - 1 : 0);
+    // Sin notas no se sabe cuántas hay. Teclado Bluetooth: Inicio / Fin (PowerPoint, Impress
+    // y Keynote las entienden al presentar)
+    if (mode == Mode.bluetooth && isAndroid) {
+      if (!await NativeBridge.hidSend(last ? 0x4D : 0x4A)) _nudge(t('Conecta tu PC primero', 'Connect your computer first'));
+      return;
+    }
+    if (!last) {
+      await _typeSlideNumber(1);
+      return;
+    }
+    _nudge(t('Agrega las notas para saber cuál es la última diapositiva', 'Add the notes to know which slide is the last one'));
+  }
+
+  Future<void> setHold({required bool up, required HoldAction action}) async {
+    if (up) {
+      holdUp = action;
+    } else {
+      holdDown = action;
+    }
+    notifyListeners();
+    await NativeBridge.setVolumeHold(holdUp != HoldAction.none || holdDown != HoldAction.none);
+    await _prefs.setString(up ? 'hold_up' : 'hold_down', action.name);
+  }
 
   /// Botones de la pantalla: con [tapGuard], un segundo toque muy seguido se ignora
   /// (un roce o un doble toque sin querer no salta dos diapositivas).
@@ -704,7 +817,7 @@ class RemoteController extends ChangeNotifier {
   void _onNative(Map<String, Object?> e) {
     switch (e['type']) {
       case 'volume':
-        if (_foreground) onVolume(e['dir'] == 'up');
+        if (_foreground) _onVolumeKey(e['dir'] == 'up', e['phase']);
       case 'hid':
         _onHid(e);
       case 'ble':
