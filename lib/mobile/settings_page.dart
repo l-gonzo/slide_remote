@@ -7,7 +7,7 @@ import 'stage_widgets.dart';
 import 'timer_chip.dart';
 
 /// Versión que se muestra en "Acerca de" (la misma de pubspec.yaml).
-const kAppVersion = '2.5.0';
+const kAppVersion = '2.6.0';
 
 /// Ajustes: una pantalla completa con grupos, de lo que más se usa al presentar a lo menos.
 class SettingsPage extends StatelessWidget {
