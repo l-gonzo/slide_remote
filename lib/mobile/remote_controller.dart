@@ -456,8 +456,13 @@ class RemoteController extends ChangeNotifier {
   InkBoard? _aimInk;
   Offset _aim = const Offset(0.5, 0.5);
 
-  /// Giro filtrado (rad/s): horizontal alrededor de la vertical y vertical alrededor del eje x.
+  /// Giro filtrado (rad/s): horizontal alrededor de la vertical y vertical alrededor del eje
+  /// horizontal perpendicular a hacia dónde apunta el teléfono.
   double _yaw = 0, _pitch = 0;
+
+  /// Eje del giro vertical en coordenadas del teléfono (x, z; en y siempre es 0). Se guarda el
+  /// último porque apuntando casi recto arriba o abajo no se puede calcular.
+  double _pitchX = 1, _pitchZ = 0;
 
   /// Cuánto de la página recorre el puntero por radián de giro (≈ 35° de lado a lado), con la
   /// sensibilidad normal.
@@ -489,6 +494,8 @@ class RemoteController extends ChangeNotifier {
     _aimInk = ink;
     _aim = const Offset(0.5, 0.5);
     _yaw = _pitch = 0;
+    _pitchX = 1;
+    _pitchZ = 0;
     ink.begin(_aimPage, _aim, tool: InkTool.laser, color: const Color(0xFFFF3B30), width: size, pointer: kind);
     aiming = true;
     notifyListeners();
@@ -499,16 +506,26 @@ class RemoteController extends ChangeNotifier {
     if (ink == null) return;
     double v(String k) => (e[k] as num?)?.toDouble() ?? 0;
     final wx = v('wx'), wy = v('wy'), wz = v('wz'), dt = v('dt');
-    // Vertical del mundo sin la parte del eje x del teléfono: así el giro horizontal y el
-    // vertical no se mezclan, sostenga el teléfono acostado o casi de pie.
-    var uy = v('uy'), uz = v('uz');
-    final n = math.sqrt(uy * uy + uz * uz);
-    if (n < 0.2) return;
+    var ux = v('ux'), uy = v('uy'), uz = v('uz');
+    final n = math.sqrt(ux * ux + uy * uy + uz * uz);
+    if (n < 0.5) return;
+    ux /= n;
     uy /= n;
     uz /= n;
+    // Se apunta con el borde de arriba del teléfono (su eje y). Lo que mueve el puntero es
+    // hacia dónde apunta ese borde, no cómo está girada la mano alrededor de él:
+    //  - horizontal: giro alrededor de la vertical del mundo (arriba, u);
+    //  - vertical: giro alrededor del eje horizontal perpendicular al que apunta, y × u.
+    // Así da igual si la pantalla mira hacia arriba, de lado o hacia la persona.
+    final hx = uz, hz = -ux; // y × u = (uz, 0, −ux)
+    final hn = math.sqrt(hx * hx + hz * hz);
+    if (hn > 0.25) {
+      _pitchX = hx / hn;
+      _pitchZ = hz / hn;
+    }
     // Suavizar: quita los saltos del sensor sin que el puntero se sienta atrasado
-    _yaw += (wy * uy + wz * uz - _yaw) * 0.45;
-    _pitch += (wx - _pitch) * 0.45;
+    _yaw += (wx * ux + wy * uy + wz * uz - _yaw) * 0.45;
+    _pitch += (wx * _pitchX + wz * _pitchZ - _pitch) * 0.45;
     double dead(double w) => w.abs() < _aimDeadZone ? 0 : w - _aimDeadZone * w.sign;
     // Girar rápido recorre más (como un mouse); despacio, más preciso
     double speed(double w) => _aimGain * aimSensitivity * (0.7 + math.min(w.abs(), 1.5) * 0.4);
