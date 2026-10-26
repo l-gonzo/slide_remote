@@ -14,6 +14,7 @@ import '../common/deck_media.dart';
 import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
 import '../common/protocol.dart';
+import '../common/svg_fix.dart';
 import '../common/theme.dart';
 import 'browser_server.dart';
 import 'ink.dart';
@@ -1109,6 +1110,7 @@ class RemoteController extends ChangeNotifier {
       // Con SVG se ven las animaciones y transiciones en el navegador
       final hasSvg = await svgOutput.exists() && await svgOutput.length() > 0;
       if (hasSvg) {
+        await DeckSvgFix.apply(svgOutput, source: input.path); // imágenes que no se ven, marcadores del patrón
         await svgOutput.copy(svgDest.path);
       } else if (await svgDest.exists()) {
         await svgDest.delete();

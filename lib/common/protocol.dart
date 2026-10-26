@@ -75,6 +75,11 @@ abstract final class Udp {
   static const String ping = '$prefix PING';
   static String pong(String name) => '$prefix PONG $name';
 
+  /// Búsqueda por broadcast cuando la red no deja pasar mDNS (redes de escuelas, oficinas): el
+  /// teléfono pregunta a todos y cada PC responde con su nombre. No cuenta como conexión.
+  static const String find = '$prefix FIND';
+  static String here(String name) => '$prefix HERE $name';
+
   /// La PC avisa qué notas tiene: versión (0 = ninguna) y puerto HTTP para pedirlas
   /// en GET /notes. Se manda junto con cada PONG; el teléfono solo descarga si cambió.
   static String notes(int version, int port) => '$prefix NOTES $version $port';

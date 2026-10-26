@@ -19,8 +19,8 @@ class PcEntry {
   String get key => '$host:$port';
 }
 
-/// Modo WiFi del teléfono: encuentra las PCs con la app de escritorio (Bonjour/mDNS)
-/// y les manda los comandos por UDP.
+/// Modo WiFi del teléfono: encuentra las PCs con la app de escritorio (Bonjour/mDNS y, si la
+/// red no lo deja pasar, preguntando por broadcast) y les manda los comandos por UDP.
 class WifiClient extends ChangeNotifier {
   final Map<String, PcEntry> _found = {}; // por nombre del servicio
   List<PcEntry> get found => _found.values.toList()..sort((a, b) => a.name.compareTo(b.name));
@@ -130,12 +130,13 @@ class WifiClient extends ChangeNotifier {
 
   Future<void> _openSocket() async {
     try {
-      final s = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final s = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0)..broadcastEnabled = true;
       s.listen((event) {
         if (event != RawSocketEvent.read) return;
         final d = s.receive();
         if (d == null) return;
         final msg = ascii.decode(d.data, allowInvalid: true).trim();
+        if (msg.startsWith('${Udp.prefix} HERE ')) return _onHere(msg.substring(Udp.prefix.length + 6), d);
         if (_targetAddress == null || d.address.address != _targetAddress!.address) return;
         if (msg.startsWith('${Udp.prefix} PAGE ')) {
           final p = msg.split(' ');
@@ -259,8 +260,48 @@ class WifiClient extends ChangeNotifier {
     s.send(ascii.encode(Udp.ping), addr, pc.port);
   }
 
+  /// Una PC respondió a la búsqueda por broadcast.
+  void _onHere(String name, Datagram d) {
+    final host = d.address.address;
+    if (name.isEmpty || _found[name]?.host == host) return;
+    // Si mDNS ya la encontró con otra dirección, se queda esa
+    if (_found.containsKey(name) && !_foundByFind.contains(name)) return;
+    _foundByFind.add(name);
+    final pc = PcEntry(name: name, host: host, port: d.port);
+    _found[name] = pc;
+    if (preferredName == name && (target == null || target!.host != host)) select(pc);
+    notifyListeners();
+  }
+
+  final Set<String> _foundByFind = {};
+  int _ticks = 0;
+
+  /// Preguntar a toda la red quién tiene la app de escritorio: a la dirección de broadcast
+  /// general y a la de la subred de cada interfaz (algunas redes solo dejan pasar esa).
+  Future<void> _find() async {
+    final s = _socket;
+    if (s == null) return;
+    final targets = {'255.255.255.255'};
+    try {
+      for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
+        for (final a in i.addresses) {
+          if (a.isLoopback || a.isLinkLocal) continue;
+          final b = a.rawAddress;
+          targets.add('${b[0]}.${b[1]}.${b[2]}.255'); // la máscara no se sabe: la más común
+        }
+      }
+    } catch (_) {}
+    for (final t in targets) {
+      try {
+        s.send(ascii.encode(Udp.find), InternetAddress(t), kUdpPort);
+      } catch (_) {}
+    }
+  }
+
   void _tick() {
     if (!_running) return;
+    // Mientras no haya PC conectada, buscar también por broadcast (cada 4 s)
+    if (!online && _ticks++ % 2 == 0) _find();
     _ping();
     final last = _lastPong;
     final stillOnline = last != null && DateTime.now().difference(last) < const Duration(seconds: 5);

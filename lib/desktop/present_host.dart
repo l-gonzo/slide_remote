@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../common/deck_media.dart';
 import '../common/i18n.dart';
 import '../common/link_view.dart';
+import '../common/svg_fix.dart';
 import '../common/web_page.dart';
 import 'office.dart';
 
@@ -230,6 +231,7 @@ class PresentHost extends ChangeNotifier {
       File? svg;
       try {
         svg = await Office.convert(src, 'svg', dir, filter: 'impress_svg_Export');
+        await DeckSvgFix.apply(svg, source: src.path); // imágenes que no se ven, marcadores del patrón
       } catch (e) {
         debugPrint('Sin animaciones (SVG): $e'); // se proyecta el PDF, sin animaciones
       }

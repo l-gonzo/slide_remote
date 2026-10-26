@@ -284,6 +284,11 @@ class ReceiverController extends ChangeNotifier {
     final msg = ascii.decode(d.data, allowInvalid: true).trim();
     final parts = msg.split(' ');
     if (parts.isEmpty || parts.first != Udp.prefix || parts.length < 2) return;
+    if (parts[1] == 'FIND') {
+      // Un teléfono buscando PCs: solo decir quién soy (todavía no se conecta)
+      s.send(ascii.encode(Udp.here(hostName)), d.address, d.port);
+      return;
+    }
     wifiPeer = d.address.address;
     _wifiSeen = DateTime.now();
     _phones[d.address.address] = _wifiSeen!;
@@ -379,8 +384,10 @@ class ReceiverController extends ChangeNotifier {
       final list = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
       return [
         for (final i in list)
-          for (final a in i.addresses)
-            if (!a.isLinkLocal) a.address,
+          // Redes internas de Docker y máquinas virtuales: el teléfono no las alcanza
+          if (!RegExp(r'^(docker|br-|veth|virbr|vmnet|vboxnet|lxcbr|lxdbr|podman|cni)').hasMatch(i.name))
+            for (final a in i.addresses)
+              if (!a.isLinkLocal) a.address,
       ];
     } catch (_) {
       return const [];
