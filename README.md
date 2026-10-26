@@ -65,6 +65,7 @@ Al transmitir desde el móvil, o desde la PC con *Proyectar en esta PC*, la pant
 
 - **Herramientas:** pluma, marcatextos, puntero (láser, foco que oscurece todo lo demás o lupa que agranda) y borrador. Lo que dibujas aparece al instante sobre la presentación que ve el público.
 - **Tomar y guardar la herramienta:** tocarla la toma (la diapositiva se agranda y aparecen colores y grosores); tocarla otra vez, o “atrás”, la guarda y el espacio vuelve a las notas. Sin herramienta en la mano un roce no dibuja nada; el borde de la diapositiva se ilumina cuando lo que toques se verá en la PC.
+- **Apuntar moviendo el teléfono:** en *Ajustes → Botones de volumen* se puede elegir, al mantener presionado volumen + o −, *Apuntar con el láser*, *con el foco* o *con la lupa*. Mientras lo mantienes, el puntero aparece en el centro de la diapositiva y sigue el movimiento del teléfono (como un apuntador de verdad); al soltarlo desaparece y no cambia de diapositiva. Usa el giroscopio y el tamaño de puntero elegido en la vista de dibujo.
 - **Seis colores y cuatro grosores** (fino, normal, grueso, muy grueso); cada herramienta recuerda el suyo.
 - **Borrador** de trazos completos (toca o arrastra encima), **deshacer**, **borrar esta diapositiva** y **borrar todas** (con confirmación).
 - **Ocultar anotaciones** (*⋯*): el público deja de verlas sin borrarlas; en el teléfono se ven tenues y la etiqueta *Ocultas en la PC* las vuelve a mostrar.

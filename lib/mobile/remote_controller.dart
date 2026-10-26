@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -17,6 +18,7 @@ import '../common/theme.dart';
 import 'browser_server.dart';
 import 'ink.dart';
 import 'native_bridge.dart';
+import 'slide_stage.dart' show InkTools;
 import 'slide_thumbs.dart';
 import 'talk_timer.dart';
 import 'wifi_client.dart';
@@ -27,7 +29,27 @@ enum Mode { bluetooth, wifi, browser }
 enum Hand { right, left }
 
 /// Qué hace mantener presionado un botón de volumen (además de cambiar de diapositiva al tocarlo).
-enum HoldAction { none, first, last, timer, lock, ink }
+/// Las tres `aim*`: apuntar moviendo el teléfono con el láser, el foco o la lupa mientras se
+/// mantiene presionado.
+enum HoldAction {
+  none,
+  first,
+  last,
+  timer,
+  lock,
+  ink,
+  aimLaser,
+  aimSpot,
+  aimZoom;
+
+  /// Puntero con el que se apunta, o null si la acción no es apuntar.
+  PointerKind? get aim => switch (this) {
+        HoldAction.aimLaser => PointerKind.laser,
+        HoldAction.aimSpot => PointerKind.spot,
+        HoldAction.aimZoom => PointerKind.zoom,
+        _ => null,
+      };
+}
 
 /// "No molestar" al presentar: activo, falta el permiso, o el sistema no lo permite (iOS).
 enum DndState { off, on, needsAccess, unsupported }
@@ -100,6 +122,9 @@ class RemoteController extends ChangeNotifier {
 
   /// Tamaño del texto de las notas.
   double notesFont = 22;
+
+  /// Sensibilidad al apuntar moviendo el teléfono (1 = normal).
+  double aimSensitivity = 1;
 
   /// Pantalla bloqueada: los toques no hacen nada (solo los botones de volumen). Evita cambios
   /// de diapositiva o gestos del sistema accidentales con el teléfono en la mano o el bolsillo.
@@ -251,6 +276,7 @@ class RemoteController extends ChangeNotifier {
     tapGuard = _prefs.getBool('tap_guard') ?? true;
     dnd = _prefs.getBool('dnd') ?? true;
     notesFont = (_prefs.getDouble('notes_font') ?? 22).clamp(15, 34);
+    aimSensitivity = (_prefs.getDouble('aim_sensitivity') ?? 1).clamp(0.4, 2.5);
     selectedAddress = _prefs.getString('bt_addr');
     _btAuto = _prefs.getBool('bt_auto') ?? false;
     wifi.preferredName = _prefs.getString('wifi_name');
@@ -310,6 +336,7 @@ class RemoteController extends ChangeNotifier {
     _foreground = false;
     _holdTimer?.cancel();
     _pressed = null;
+    _stopAim();
     await NativeBridge.setVolumeCapture(false);
     await WakelockPlus.disable();
     await _stopTransports(keepBrowser: true);
@@ -374,6 +401,7 @@ class RemoteController extends ChangeNotifier {
       if (_pressed != up) return;
       _pressed = null;
       _holdTimer?.cancel();
+      _stopAim();
       if (!_held) onVolume(up);
       _held = false;
       return;
@@ -406,6 +434,8 @@ class RemoteController extends ChangeNotifier {
       case HoldAction.lock:
         await setLocked(!locked);
         _nudge(locked ? t('Pantalla bloqueada', 'Screen locked') : t('Pantalla desbloqueada', 'Screen unlocked'));
+      case HoldAction.aimLaser || HoldAction.aimSpot || HoldAction.aimZoom:
+        await _startAim(action.aim!);
       case HoldAction.ink:
         final ink = _activeInk;
         if (ink == null) {
@@ -416,6 +446,91 @@ class RemoteController extends ChangeNotifier {
             ? t('Anotaciones visibles en la PC', 'Annotations shown on the computer')
             : t('Anotaciones ocultas en la PC', 'Annotations hidden on the computer'));
     }
+  }
+
+  // ---- apuntar moviendo el teléfono
+
+  /// Se está apuntando con el giroscopio (la UI pide WiFi de baja latencia mientras tanto).
+  bool aiming = false;
+  InkBoard? _aimInk;
+  Offset _aim = const Offset(0.5, 0.5);
+
+  /// Giro filtrado (rad/s): horizontal alrededor de la vertical y vertical alrededor del eje x.
+  double _yaw = 0, _pitch = 0;
+
+  /// Cuánto de la página recorre el puntero por radián de giro (≈ 35° de lado a lado), con la
+  /// sensibilidad normal.
+  static const _aimGain = 1.6;
+
+  /// Giros más lentos que esto (rad/s) son el temblor de la mano: el puntero no se mueve.
+  static const _aimDeadZone = 0.025;
+
+  /// Página en la que se apunta: la que ve el público.
+  int get _aimPage => mode == Mode.browser ? math.max(1, browser.page) : _shownPage;
+
+  /// El puntero aparece en el centro de la diapositiva y sigue al teléfono hasta soltar el botón.
+  Future<void> _startAim(PointerKind kind) async {
+    final ink = _activeInk;
+    if (ink == null) {
+      return _nudge(t('Para apuntar, transmite la presentación', 'To point, stream the presentation'));
+    }
+    _stopAim();
+    if (!await NativeBridge.setMotion(true)) {
+      return _nudge(t('Este teléfono no tiene giroscopio', 'This phone has no gyroscope'));
+    }
+    // Se soltó el botón mientras arrancaba el sensor
+    if (_pressed == null) {
+      await NativeBridge.setMotion(false);
+      return;
+    }
+    // Mismo tamaño que el puntero de la vista de dibujo
+    final size = InkTools.sizes[(_prefs.getInt('ink_size_laser') ?? 1).clamp(0, InkTools.sizes.length - 1)];
+    _aimInk = ink;
+    _aim = const Offset(0.5, 0.5);
+    _yaw = _pitch = 0;
+    ink.begin(_aimPage, _aim, tool: InkTool.laser, color: const Color(0xFFFF3B30), width: size, pointer: kind);
+    aiming = true;
+    notifyListeners();
+  }
+
+  void _onMotion(Map<String, Object?> e) {
+    final ink = _aimInk;
+    if (ink == null) return;
+    double v(String k) => (e[k] as num?)?.toDouble() ?? 0;
+    final wx = v('wx'), wy = v('wy'), wz = v('wz'), dt = v('dt');
+    // Vertical del mundo sin la parte del eje x del teléfono: así el giro horizontal y el
+    // vertical no se mezclan, sostenga el teléfono acostado o casi de pie.
+    var uy = v('uy'), uz = v('uz');
+    final n = math.sqrt(uy * uy + uz * uz);
+    if (n < 0.2) return;
+    uy /= n;
+    uz /= n;
+    // Suavizar: quita los saltos del sensor sin que el puntero se sienta atrasado
+    _yaw += (wy * uy + wz * uz - _yaw) * 0.45;
+    _pitch += (wx - _pitch) * 0.45;
+    double dead(double w) => w.abs() < _aimDeadZone ? 0 : w - _aimDeadZone * w.sign;
+    // Girar rápido recorre más (como un mouse); despacio, más preciso
+    double speed(double w) => _aimGain * aimSensitivity * (0.7 + math.min(w.abs(), 1.5) * 0.4);
+    final yaw = dead(_yaw), pitch = dead(_pitch);
+    // Positivo = a la izquierda / hacia arriba. Las páginas son más anchas que altas: en
+    // vertical el mismo giro recorre más fracción de la página.
+    final next = Offset(
+      (_aim.dx - yaw * dt * speed(yaw)).clamp(0.0, 1.0),
+      (_aim.dy - pitch * dt * speed(pitch) * 16 / 9).clamp(0.0, 1.0),
+    );
+    if (next == _aim) return;
+    _aim = next;
+    ink.move(_aimPage, _aim, InkTool.laser);
+  }
+
+  void _stopAim() {
+    final ink = _aimInk;
+    if (ink == null) return;
+    _aimInk = null;
+    ink.end();
+    NativeBridge.setMotion(false);
+    aiming = false;
+    notifyListeners();
   }
 
   /// Dibujos que ve el público ahora: los del modo Navegador o los de la proyección en la PC.
@@ -674,6 +789,12 @@ class RemoteController extends ChangeNotifier {
     await _prefs.setDouble('notes_font', notesFont);
   }
 
+  Future<void> setAimSensitivity(double v) async {
+    aimSensitivity = v.clamp(0.4, 2.5);
+    notifyListeners();
+    await _prefs.setDouble('aim_sensitivity', aimSensitivity);
+  }
+
   // ================================================================ al presentar
 
   /// Bloquear la pantalla: solo los botones de volumen cambian de diapositiva; se ocultan las
@@ -818,6 +939,8 @@ class RemoteController extends ChangeNotifier {
     switch (e['type']) {
       case 'volume':
         if (_foreground) _onVolumeKey(e['dir'] == 'up', e['phase']);
+      case 'motion':
+        _onMotion(e);
       case 'hid':
         _onHid(e);
       case 'ble':

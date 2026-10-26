@@ -13,7 +13,8 @@ abstract final class NativeBridge {
   static Stream<Map<String, Object?>>? _stream;
 
   /// Eventos: {type: volume, dir: up|down, phase: down|up} (al presionar y al soltar), {type: hid, state, name, address, message},
-  /// {type: ble, state, centrals}, {type: discoverable, ok}.
+  /// {type: ble, state, centrals}, {type: discoverable, ok},
+  /// {type: motion, wx, wy, wz, ux, uy, uz, dt} (giro en rad/s, arriba normalizado, ambos en coordenadas del teléfono).
   static Stream<Map<String, Object?>> get events => _stream ??= _events
       .receiveBroadcastStream()
       .where((e) => e is Map)
@@ -38,6 +39,9 @@ abstract final class NativeBridge {
 
   /// Android: WiFi sin ahorro de energía mientras se dibuja (si no, los paquetes salen a tirones).
   static Future<void> setLowLatencyWifi(bool on) => call('setLowLatencyWifi', {'enabled': on});
+
+  /// Giroscopio para apuntar moviendo el teléfono (eventos `motion`). false si no hay giroscopio.
+  static Future<bool> setMotion(bool on) async => await call<bool>('setMotion', {'enabled': on}) ?? false;
 
   /// Idioma de los mensajes que genera la parte nativa ('es' o 'en').
   static Future<void> setLanguage(String lang) => call('setLanguage', {'lang': lang});

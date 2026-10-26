@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
   s.platform         = :ios, '14.0'
-  s.frameworks       = 'CoreBluetooth', 'AVFoundation', 'MediaPlayer', 'WebKit', 'PDFKit', 'CoreHaptics', 'AudioToolbox'
+  s.frameworks       = 'CoreBluetooth', 'AVFoundation', 'MediaPlayer', 'WebKit', 'PDFKit', 'CoreHaptics', 'AudioToolbox', 'CoreMotion'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version    = '5.0'
 end

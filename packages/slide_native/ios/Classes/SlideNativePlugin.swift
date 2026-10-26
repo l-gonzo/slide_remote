@@ -2,6 +2,7 @@ import AudioToolbox
 import AVFoundation
 import CoreBluetooth
 import CoreHaptics
+import CoreMotion
 import Flutter
 import MediaPlayer
 import PDFKit
@@ -20,6 +21,7 @@ enum SlideLang {
 ///   para detectar subir y bajar). Un `MPVolumeView` invisible oculta el indicador del sistema.
 /// - Bluetooth: iOS no permite que una app sea un teclado Bluetooth, así que el iPhone anuncia
 ///   un servicio BLE propio al que se conecta la app de escritorio de Zlide.
+/// - Giroscopio para apuntar moviendo el teléfono.
 public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBPeripheralManagerDelegate {
 
     // Deben coincidir con lib/common/protocol.dart
@@ -42,6 +44,10 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
     private var pressUp: Bool?
     private var releaseTimer: Timer?
     private static let releaseGap: TimeInterval = 0.5
+
+    // ---- giroscopio
+    private var motion: CMMotionManager?
+    private var lastMotion: TimeInterval = 0
 
     // ---- BLE
     private var peripheral: CBPeripheralManager?
@@ -93,6 +99,8 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
             detectHold = (args?["enabled"] as? Bool) ?? false
             if !detectHold { releaseVolume() }
             result(nil)
+        case "setMotion":
+            result(setMotion((args?["enabled"] as? Bool) ?? false))
         case "bleStart":
             bleStart()
             result(nil)
@@ -159,6 +167,34 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    // MARK: - Giroscopio
+
+    /// Mientras se apunta: manda {type: motion, wx, wy, wz (rad/s), ux, uy, uz (arriba), dt (s)}.
+    /// Devuelve false si el teléfono no tiene giroscopio.
+    private func setMotion(_ on: Bool) -> Bool {
+        motion?.stopDeviceMotionUpdates()
+        motion = nil
+        guard on else { return true }
+        let m = CMMotionManager()
+        guard m.isDeviceMotionAvailable else { return false }
+        m.deviceMotionUpdateInterval = 1.0 / 60
+        lastMotion = 0
+        m.startDeviceMotionUpdates(to: .main) { [weak self] dm, _ in
+            guard let self, let dm else { return }
+            let dt = self.lastMotion == 0 ? 0 : dm.timestamp - self.lastMotion
+            self.lastMotion = dm.timestamp
+            guard dt > 0, dt < 0.2 else { return }
+            let r = dm.rotationRate, g = dm.gravity
+            // La gravedad de iOS apunta hacia el suelo; se manda hacia arriba, como en Android
+            self.sink?([
+                "type": "motion", "wx": r.x, "wy": r.y, "wz": r.z,
+                "ux": -g.x, "uy": -g.y, "uz": -g.z, "dt": dt,
+            ])
+        }
+        motion = m
+        return true
     }
 
     // MARK: - Volumen

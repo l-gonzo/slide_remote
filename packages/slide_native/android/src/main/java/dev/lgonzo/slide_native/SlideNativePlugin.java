@@ -10,6 +10,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioAttributes;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -44,6 +48,7 @@ import io.flutter.plugin.common.PluginRegistry;
  *  - teclado Bluetooth HID (BtHidKeyboard)
  *  - permisos de Bluetooth y "hacer visible"
  *  - "No molestar" mientras se presenta
+ *  - giroscopio para apuntar moviendo el teléfono
  *
  * Canal de métodos: "slide_native". Canal de eventos: "slide_native/events".
  */
@@ -87,6 +92,7 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         if (hid != null) ((BtHidKeyboard) hid).stop();
         hid = null;
         setLowLatencyWifi(false);
+        setMotion(false);
     }
 
     // ================================================================ ActivityAware
@@ -180,6 +186,66 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         return true;
     }
 
+    // ================================================================ giroscopio
+
+    private SensorEventListener motionListener;
+
+    /** Arriba (contrario a la gravedad) en coordenadas del teléfono, normalizado. */
+    private final float[] up = {0, 0, 1};
+
+    /**
+     * Mientras se apunta: manda {type: motion, wx, wy, wz (rad/s), ux, uy, uz (arriba), dt (s)}.
+     * Devuelve false si el teléfono no tiene giroscopio.
+     */
+    private boolean setMotion(boolean on) {
+        SensorManager sm = (SensorManager) appContext.getSystemService(Context.SENSOR_SERVICE);
+        if (sm == null) return false;
+        if (motionListener != null) {
+            sm.unregisterListener(motionListener);
+            motionListener = null;
+        }
+        if (!on) return true;
+        Sensor gyro = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        if (gyro == null) return false;
+        Sensor gravity = sm.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        if (gravity == null) gravity = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        motionListener = new SensorEventListener() {
+            long last = 0;
+
+            @Override
+            public void onSensorChanged(SensorEvent e) {
+                if (e.sensor.getType() != Sensor.TYPE_GYROSCOPE) {
+                    // Gravedad o acelerómetro: el sensor marca hacia arriba (la reacción al peso)
+                    float[] v = e.values;
+                    double n = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                    if (n < 1) return;
+                    for (int i = 0; i < 3; i++) up[i] = (float) (v[i] / n);
+                    return;
+                }
+                long t = e.timestamp;
+                double dt = last == 0 ? 0 : (t - last) / 1e9;
+                last = t;
+                if (dt <= 0 || dt > 0.2) return;
+                Map<String, Object> m = new HashMap<>();
+                m.put("type", "motion");
+                m.put("wx", (double) e.values[0]);
+                m.put("wy", (double) e.values[1]);
+                m.put("wz", (double) e.values[2]);
+                m.put("ux", (double) up[0]);
+                m.put("uy", (double) up[1]);
+                m.put("uz", (double) up[2]);
+                m.put("dt", dt);
+                emit(m);
+            }
+
+            @Override
+            public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+        };
+        sm.registerListener(motionListener, gyro, SensorManager.SENSOR_DELAY_GAME);
+        if (gravity != null) sm.registerListener(motionListener, gravity, SensorManager.SENSOR_DELAY_GAME);
+        return true;
+    }
+
     // ================================================================ métodos
 
     @Override
@@ -199,6 +265,11 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
             case "setVolumeHold": {
                 // Android avisa al soltar el botón: no hace falta nada (iOS sí lo necesita)
                 result.success(null);
+                return;
+            }
+            case "setMotion": {
+                Boolean on = call.argument("enabled");
+                result.success(setMotion(on != null && on));
                 return;
             }
             case "vibrate": {

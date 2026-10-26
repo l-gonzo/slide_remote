@@ -145,7 +145,30 @@ class SettingsPage extends StatelessWidget {
           ),
           _holdRow(context, up: true),
           _holdRow(context, up: false),
+          if (c.holdUp.aim != null || c.holdDown.aim != null) _aimRow(),
         ],
+      );
+
+  /// Sensibilidad al apuntar moviendo el teléfono (solo si algún botón apunta).
+  Widget _aimRow() => SettingRow(
+        icon: Icons.screen_rotation_alt_rounded,
+        title: t('Sensibilidad al apuntar', 'Pointing sensitivity'),
+        subtitle: t('Cuánto se mueve el puntero al girar el teléfono.', 'How far the pointer moves when you turn the phone.'),
+        trailing: Text('${(c.aimSensitivity * 100).round()} %', style: Txt.digits(15, color: Pal.muted)),
+        below: Row(children: [
+          Icon(Icons.slow_motion_video_rounded, size: 18, color: Pal.muted),
+          Expanded(
+            child: Slider(
+              value: c.aimSensitivity,
+              min: 0.4,
+              max: 2.5,
+              divisions: 21,
+              label: '${(c.aimSensitivity * 100).round()} %',
+              onChanged: c.setAimSensitivity,
+            ),
+          ),
+          Icon(Icons.speed_rounded, size: 18, color: Pal.muted),
+        ]),
       );
 
   static String _holdName(HoldAction a) => switch (a) {
@@ -155,6 +178,9 @@ class SettingsPage extends StatelessWidget {
         HoldAction.timer => t('Iniciar o pausar el cronómetro', 'Start or pause the timer'),
         HoldAction.lock => t('Bloquear o desbloquear la pantalla', 'Lock or unlock the screen'),
         HoldAction.ink => t('Ocultar o mostrar las anotaciones', 'Hide or show annotations'),
+        HoldAction.aimLaser => t('Apuntar con el láser moviendo el teléfono', 'Point with the laser by moving the phone'),
+        HoldAction.aimSpot => t('Apuntar con el foco moviendo el teléfono', 'Point with the spotlight by moving the phone'),
+        HoldAction.aimZoom => t('Apuntar con la lupa moviendo el teléfono', 'Point with the magnifier by moving the phone'),
       };
 
   static IconData _holdIcon(HoldAction a) => switch (a) {
@@ -164,6 +190,9 @@ class SettingsPage extends StatelessWidget {
         HoldAction.timer => Icons.timer_outlined,
         HoldAction.lock => Icons.lock_outline_rounded,
         HoldAction.ink => Icons.visibility_off_outlined,
+        HoldAction.aimLaser => Icons.adjust_rounded,
+        HoldAction.aimSpot => Icons.highlight_rounded,
+        HoldAction.aimZoom => Icons.zoom_in_rounded,
       };
 
   /// Acción al mantener presionado volumen + ([up]) o volumen −.

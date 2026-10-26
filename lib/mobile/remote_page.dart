@@ -111,9 +111,9 @@ class _RemotePageState extends State<RemotePage> {
     _syncLatency();
   }
 
-  /// WiFi de baja latencia solo mientras se dibuja (gasta más batería).
+  /// WiFi de baja latencia solo mientras se dibuja o se apunta (gasta más batería).
   void _syncLatency() {
-    final want = _stageOn && _tools.tool != null;
+    final want = (_stageOn && _tools.tool != null) || c.aiming;
     if (want == _lowLatency) return;
     _lowLatency = want;
     NativeBridge.setLowLatencyWifi(want);
