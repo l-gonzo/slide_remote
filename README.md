@@ -324,7 +324,7 @@ python3 tool/configure.py        # en Windows: py tool\configure.py
 
 > Esas carpetas generadas sí se suben a git (son parte del proyecto); `build/` y los archivos de LibreOffice no (están en `.gitignore`).
 
-La versión de la app está en `pubspec.yaml` (`version: 2.6.0+8` → nombre `2.6.0`, número de compilación `8`). Súbela antes de publicar una actualización.
+La versión de la app está en `pubspec.yaml` (`version: 2.6.1+9` → nombre `2.6.1`, número de compilación `9`). Súbela antes de publicar una actualización.
 
 ## Compilar e instalar / crear instaladores
 
@@ -365,10 +365,10 @@ Guarda el `.jks` y la contraseña en un lugar seguro (sin ellos no puedes actual
 
 ```bash
 tool/package_linux.sh
-# → dist/zlide_2.6.0_amd64.deb            (Ubuntu, Debian, Mint, Pop!_OS…)
-# → dist/zlide_2.6.0_linux-amd64.tar.gz   (cualquier distribución)
+# → dist/zlide_2.6.1_amd64.deb            (Ubuntu, Debian, Mint, Pop!_OS…)
+# → dist/zlide_2.6.1_linux-amd64.tar.gz   (cualquier distribución)
 
-sudo apt install ./dist/zlide_2.6.0_amd64.deb
+sudo apt install ./dist/zlide_2.6.1_amd64.deb
 ```
 
 El `.deb` agrega Zlide al menú de aplicaciones e instala la regla de udev para `/dev/uinput` (el permiso para presionar teclas). Si la app dice que falta el permiso, cierra y abre sesión una vez. Desinstalar: `sudo apt remove zlide`.
@@ -381,8 +381,8 @@ En PowerShell, dentro del proyecto:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1
-# → dist\Zlide-Setup-2.6.0.exe            (instalador)
-# → dist\Zlide-2.6.0-windows-x64.zip      (portátil: descomprimir y abrir slide_remote.exe)
+# → dist\Zlide-Setup-2.6.1.exe            (instalador)
+# → dist\Zlide-2.6.1-windows-x64.zip      (portátil: descomprimir y abrir slide_remote.exe)
 ```
 
 El instalador crea el acceso en el menú Inicio y agrega la regla del firewall para redes privadas. Incluye las bibliotecas de Visual C++, así que funciona en PCs sin nada extra. Como no está firmado, SmartScreen puede avisar: **Más información → Ejecutar de todas formas**.
@@ -391,7 +391,7 @@ El instalador crea el acceso en el menú Inicio y agrega la regla del firewall p
 
 ```bash
 tool/package_macos.sh
-# → dist/Zlide-2.6.0-macos.dmg   (abrir y arrastrar a Aplicaciones)
+# → dist/Zlide-2.6.1-macos.dmg   (abrir y arrastrar a Aplicaciones)
 ```
 
 Sin cuenta de desarrollador de Apple la app va firmada “ad hoc”: la primera vez ábrela con **clic derecho → Abrir** (o `xattr -dr com.apple.quarantine "/Applications/Zlide.app"`). Con cuenta de pago puedes firmarla con tu certificado: `SIGN_ID="Developer ID Application: Tu Nombre (EQUIPO)" tool/package_macos.sh` (y notarizarla con `xcrun notarytool` para que abra sin avisos).
@@ -433,7 +433,7 @@ El proyecto trae `.github/workflows/build.yml`: GitHub compila en sus servidores
 - Para publicar una versión:
 
   ```bash
-  git tag v2.6.0
+  git tag v2.6.1
   git push --tags
   ```
 
