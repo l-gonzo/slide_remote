@@ -145,7 +145,7 @@ class SettingsPage extends StatelessWidget {
           ),
           _holdRow(context, up: true),
           _holdRow(context, up: false),
-          if (c.holdUp.aim != null || c.holdDown.aim != null) _aimRow(),
+          if (c.holdUp == HoldAction.aim || c.holdDown == HoldAction.aim) _aimRow(),
         ],
       );
 
@@ -178,9 +178,8 @@ class SettingsPage extends StatelessWidget {
         HoldAction.timer => t('Iniciar o pausar el cronómetro', 'Start or pause the timer'),
         HoldAction.lock => t('Bloquear o desbloquear la pantalla', 'Lock or unlock the screen'),
         HoldAction.ink => t('Ocultar o mostrar las anotaciones', 'Hide or show annotations'),
-        HoldAction.aimLaser => t('Apuntar con el láser moviendo el teléfono', 'Point with the laser by moving the phone'),
-        HoldAction.aimSpot => t('Apuntar con el foco moviendo el teléfono', 'Point with the spotlight by moving the phone'),
-        HoldAction.aimZoom => t('Apuntar con la lupa moviendo el teléfono', 'Point with the magnifier by moving the phone'),
+        HoldAction.aim => t('Apuntar moviendo el teléfono (con el puntero elegido en la vista de dibujo)',
+            'Point by moving the phone (with the pointer chosen in the drawing view)'),
       };
 
   static IconData _holdIcon(HoldAction a) => switch (a) {
@@ -190,9 +189,7 @@ class SettingsPage extends StatelessWidget {
         HoldAction.timer => Icons.timer_outlined,
         HoldAction.lock => Icons.lock_outline_rounded,
         HoldAction.ink => Icons.visibility_off_outlined,
-        HoldAction.aimLaser => Icons.adjust_rounded,
-        HoldAction.aimSpot => Icons.highlight_rounded,
-        HoldAction.aimZoom => Icons.zoom_in_rounded,
+        HoldAction.aim => Icons.adjust_rounded,
       };
 
   /// Acción al mantener presionado volumen + ([up]) o volumen −.

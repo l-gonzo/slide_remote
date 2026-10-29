@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../common/i18n.dart';
@@ -34,7 +35,7 @@ abstract final class Office {
     if (soffice != null) {
       // Perfil propio: así funciona aunque LibreOffice ya esté abierto
       final profile = Uri.directory('${outDir.path}/perfil').toString();
-      final r = await Process.run(soffice, [
+      final proc = await Process.start(soffice, [
         '-env:UserInstallation=$profile',
         '--headless',
         '--norestore',
@@ -43,15 +44,26 @@ abstract final class Office {
         '--outdir',
         outDir.path,
         input.path,
-      ]).timeout(const Duration(minutes: 3));
-      final out = outDir
-          .listSync()
+      ]);
+      final stdout = proc.stdout.transform(const SystemEncoding().decoder).join();
+      final stderr = proc.stderr.transform(const SystemEncoding().decoder).join();
+      try {
+        await proc.exitCode.timeout(const Duration(minutes: 3));
+      } on TimeoutException {
+        // Si no se termina, LibreOffice se quedaría abierto (y con el perfil bloqueado)
+        proc.kill(ProcessSignal.sigkill);
+        throw FormatException(t('LibreOffice tardó demasiado en convertir el archivo.',
+            'LibreOffice took too long to convert the file.'));
+      }
+      final out = (await outDir.list().toList())
           .whereType<File>()
           .where((x) => x.path.toLowerCase().endsWith('.$format'))
           .firstOrNull;
       if (out != null) return out;
-      throw FormatException('${t('LibreOffice no pudo convertir el archivo', 'LibreOffice could not convert the file')} '
-          '(${'${r.stderr}'.trim()})');
+      final err = (await stderr).trim();
+      final detail = err.isNotEmpty ? err : (await stdout).trim();
+      throw FormatException('${t('LibreOffice no pudo convertir el archivo', 'LibreOffice could not convert the file')}'
+          '${detail.isEmpty ? '.' : ' ($detail)'}');
     }
     if (Platform.isWindows && format == 'pdf' && filter == null) {
       final out = File('${outDir.path}\\presentacion.pdf');

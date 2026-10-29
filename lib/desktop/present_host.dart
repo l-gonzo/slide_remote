@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../common/deck_media.dart';
 import '../common/i18n.dart';
 import '../common/link_view.dart';
+import '../common/pptx_repair.dart';
 import '../common/svg_fix.dart';
 import '../common/web_page.dart';
 import 'office.dart';
@@ -53,6 +54,7 @@ class PresentHost extends ChangeNotifier {
 
   File? _pdf;
   File? _svg; // con animaciones y transiciones (null: solo PDF)
+  Directory? _convDir; // carpeta temporal de la conversión (null: se proyecta el PDF original)
   String? _source; // archivo original
   DateTime? _sourceTime;
   int version = 0; // cambia con cada PDF (el teléfono vuelve a descargarlo)
@@ -106,15 +108,10 @@ class PresentHost extends ChangeNotifier {
       notifyListeners();
       _sendPhones(_presentState());
       try {
-        final old = _pdf;
-        final (pdf, svg) = await _convert(src);
+        final (pdf, svg, dir) = await _convert(src);
         _pdf = pdf;
         _svg = svg;
-        if (old != null && old.path != _pdf!.path && old.path != sourcePath) {
-          try {
-            await old.parent.delete(recursive: true); // conversión anterior
-          } catch (_) {}
-        }
+        _setConvDir(dir);
         _source = sourcePath;
         _sourceTime = mtime;
         _pendingTime = null;
@@ -222,20 +219,38 @@ class PresentHost extends ChangeNotifier {
   }
 
   /// PDF y, si LibreOffice puede, SVG con animaciones (en la misma carpeta).
-  static Future<(File, File?)> _convert(File src) async {
-    if (src.path.toLowerCase().endsWith('.pdf')) return (src, null);
+  /// Cambia la carpeta de la conversión y borra la anterior. Solo se borran carpetas que creó
+  /// [_convert]: nunca la del archivo del usuario (al proyectar un PDF se usa el original).
+  void _setConvDir(Directory? dir) {
+    final old = _convDir;
+    _convDir = dir;
+    if (old != null && old.path != dir?.path) old.delete(recursive: true).ignore();
+  }
+
+  /// (PDF, SVG con animaciones, carpeta temporal que los contiene). Un PDF se usa tal cual.
+  static Future<(File, File?, Directory?)> _convert(File src) async {
+    if (src.path.toLowerCase().endsWith('.pdf')) return (src, null, null);
     // Carpeta nueva cada vez: si la conversión falla, la presentación anterior sigue en pantalla
     final dir = await Directory.systemTemp.createTemp('slideremote-present');
     try {
-      final pdf = await Office.convert(src, 'pdf', dir);
+      var input = src;
+      // Gráficas que LibreOffice no abre: se convierte una copia corregida (el original no se toca)
+      if (RegExp(r'\.(pptx|pptm|ppsx|ppsm|potx)$').hasMatch(src.path.toLowerCase())) {
+        final fixed = await PptxRepair.repair(await src.readAsBytes());
+        if (fixed != null) {
+          input = File('${dir.path}${Platform.pathSeparator}presentacion.${src.path.split('.').last}');
+          await input.writeAsBytes(fixed, flush: true);
+        }
+      }
+      final pdf = await Office.convert(input, 'pdf', dir);
       File? svg;
       try {
-        svg = await Office.convert(src, 'svg', dir, filter: 'impress_svg_Export');
+        svg = await Office.convert(input, 'svg', dir, filter: 'impress_svg_Export');
         await DeckSvgFix.apply(svg, source: src.path); // imágenes que no se ven, marcadores del patrón
       } catch (e) {
         debugPrint('Sin animaciones (SVG): $e'); // se proyecta el PDF, sin animaciones
       }
-      return (pdf, svg);
+      return (pdf, svg, dir);
     } catch (_) {
       try {
         await dir.delete(recursive: true);
@@ -634,6 +649,7 @@ class PresentHost extends ChangeNotifier {
       c.close();
     }
     _mediaDir?.delete(recursive: true).ignore();
+    _setConvDir(null);
     super.dispose();
   }
 }

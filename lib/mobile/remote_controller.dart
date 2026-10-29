@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../common/deck_media.dart';
 import '../common/i18n.dart';
 import '../common/pptx_notes.dart';
+import '../common/pptx_repair.dart';
 import '../common/protocol.dart';
 import '../common/svg_fix.dart';
 import '../common/theme.dart';
@@ -30,8 +31,8 @@ enum Mode { bluetooth, wifi, browser }
 enum Hand { right, left }
 
 /// Qué hace mantener presionado un botón de volumen (además de cambiar de diapositiva al tocarlo).
-/// Las tres `aim*`: apuntar moviendo el teléfono con el láser, el foco o la lupa mientras se
-/// mantiene presionado.
+/// [aim]: apuntar moviendo el teléfono mientras se mantiene presionado, con el puntero elegido
+/// para usar en la pantalla (láser, foco o lupa).
 enum HoldAction {
   none,
   first,
@@ -39,17 +40,12 @@ enum HoldAction {
   timer,
   lock,
   ink,
-  aimLaser,
-  aimSpot,
-  aimZoom;
+  aim;
 
-  /// Puntero con el que se apunta, o null si la acción no es apuntar.
-  PointerKind? get aim => switch (this) {
-        HoldAction.aimLaser => PointerKind.laser,
-        HoldAction.aimSpot => PointerKind.spot,
-        HoldAction.aimZoom => PointerKind.zoom,
-        _ => null,
-      };
+  /// Lo guardado en Ajustes. Antes había una opción por puntero (aimLaser, aimSpot, aimZoom).
+  static HoldAction parse(String? name) => name != null && name.startsWith('aim')
+      ? HoldAction.aim
+      : HoldAction.values.firstWhere((a) => a.name == name, orElse: () => HoldAction.none);
 }
 
 /// "No molestar" al presentar: activo, falta el permiso, o el sistema no lo permite (iOS).
@@ -268,10 +264,8 @@ class RemoteController extends ChangeNotifier {
     mode = Mode.values.firstWhere((m) => m.name == _prefs.getString('mode'), orElse: () => Mode.bluetooth);
     invert = _prefs.getBool('invert') ?? false;
     arrows = _prefs.getBool('arrows') ?? false;
-    HoldAction hold(String key) =>
-        HoldAction.values.firstWhere((a) => a.name == _prefs.getString(key), orElse: () => HoldAction.none);
-    holdUp = hold('hold_up');
-    holdDown = hold('hold_down');
+    holdUp = HoldAction.parse(_prefs.getString('hold_up'));
+    holdDown = HoldAction.parse(_prefs.getString('hold_down'));
     hand = _prefs.getString('hand') == 'left' ? Hand.left : Hand.right;
     oneHand = _prefs.getBool('one_hand') ?? false;
     tapGuard = _prefs.getBool('tap_guard') ?? true;
@@ -435,8 +429,8 @@ class RemoteController extends ChangeNotifier {
       case HoldAction.lock:
         await setLocked(!locked);
         _nudge(locked ? t('Pantalla bloqueada', 'Screen locked') : t('Pantalla desbloqueada', 'Screen unlocked'));
-      case HoldAction.aimLaser || HoldAction.aimSpot || HoldAction.aimZoom:
-        await _startAim(action.aim!);
+      case HoldAction.aim:
+        await _startAim();
       case HoldAction.ink:
         final ink = _activeInk;
         if (ink == null) {
@@ -475,7 +469,7 @@ class RemoteController extends ChangeNotifier {
   int get _aimPage => mode == Mode.browser ? math.max(1, browser.page) : _shownPage;
 
   /// El puntero aparece en el centro de la diapositiva y sigue al teléfono hasta soltar el botón.
-  Future<void> _startAim(PointerKind kind) async {
+  Future<void> _startAim() async {
     final ink = _activeInk;
     if (ink == null) {
       return _nudge(t('Para apuntar, transmite la presentación', 'To point, stream the presentation'));
@@ -489,7 +483,9 @@ class RemoteController extends ChangeNotifier {
       await NativeBridge.setMotion(false);
       return;
     }
-    // Mismo tamaño que el puntero de la vista de dibujo
+    // Mismo puntero (láser, foco o lupa) y tamaño que en la vista de dibujo
+    final kind = PointerKind.values.firstWhere((k) => k.name == _prefs.getString('pointer_kind'),
+        orElse: () => PointerKind.laser);
     final size = InkTools.sizes[(_prefs.getInt('ink_size_laser') ?? 1).clamp(0, InkTools.sizes.length - 1)];
     _aimInk = ink;
     _aim = const Offset(0.5, 0.5);
@@ -1090,7 +1086,9 @@ class RemoteController extends ChangeNotifier {
     final output = File('${dir.path}/convertido.pdf');
     final svgOutput = File('${dir.path}/convertido.svg');
     try {
-      await input.writeAsBytes(bytes, flush: true);
+      // Gráficas que LibreOffice no abre: se convierte una copia corregida (el original no se toca)
+      final fixed = ['pptx', 'pptm', 'ppsx', 'ppsm', 'potx'].contains(ext) ? await PptxRepair.repair(bytes) : null;
+      await input.writeAsBytes(fixed ?? bytes, flush: true);
 
       // Notas del mismo archivo (.pptx, .odp y afines; .ppt y .key no se pueden leer directo)
       PptxDeck? info;
