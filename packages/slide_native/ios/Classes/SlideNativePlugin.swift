@@ -179,7 +179,7 @@ public class SlideNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, C
         guard on else { return true }
         let m = CMMotionManager()
         guard m.isDeviceMotionAvailable else { return false }
-        m.deviceMotionUpdateInterval = 1.0 / 60
+        m.deviceMotionUpdateInterval = 1.0 / 100
         lastMotion = 0
         m.startDeviceMotionUpdates(to: .main) { [weak self] dm, _ in
             guard let self, let dm else { return }

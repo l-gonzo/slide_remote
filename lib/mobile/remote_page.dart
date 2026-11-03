@@ -759,6 +759,7 @@ class _RemotePageState extends State<RemotePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (!short) ...[_deckChip(), const SizedBox(height: Sp.xs)],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -1296,6 +1297,62 @@ class _RemotePageState extends State<RemotePage> {
     child: InkWell(borderRadius: BorderRadius.circular(Rad.s), onTap: _openSlideList, child: child),
   );
 
+  /// Nombre de la presentación con "cambiar": que siempre se vea de dónde se cambia.
+  Widget _deckChip() {
+    final name = c.presentationName ?? t('presentación', 'presentation');
+    final can = c.canChangePresentation;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: Semantics(
+        button: can,
+        label: can ? t('Cambiar presentación: $name', 'Change presentation: $name') : name,
+        excludeSemantics: true,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Rad.s),
+          onTap: can ? c.changePresentation : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Sp.xs),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(c.notesFromPc ? Icons.computer_rounded : Icons.slideshow_rounded, size: 16, color: Pal.muted),
+              const SizedBox(width: Sp.xs + 2),
+              Flexible(
+                child: Text(name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(13.5, color: Pal.muted, height: 1.2)),
+              ),
+              if (can) ...[
+                const SizedBox(width: Sp.s),
+                Text(t('Cambiar', 'Change'), style: Txt.text(13.5, weight: FontWeight.w700, color: Pal.accent, height: 1.2)),
+              ],
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Fila "presentación · Cambiar" para las hojas (Ir a, Más).
+  Widget _deckRow(BuildContext ctx) {
+    final name = c.presentationName;
+    final can = c.canChangePresentation;
+    void change() {
+      Navigator.pop(ctx);
+      c.changePresentation();
+    }
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: Sp.page),
+      leading: Icon(c.notesFromPc ? Icons.computer_rounded : Icons.slideshow_rounded),
+      title: Text(name ?? t('Sin presentación', 'No presentation'), maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: c.notesFromPc
+          ? Text(t('Se cambia en la app de la PC', 'Change it in the desktop app'))
+          : null,
+      trailing: can
+          ? TextButton(onPressed: change, child: Text(name == null ? t('Elegir', 'Choose') : t('Cambiar', 'Change')))
+          : null,
+      onTap: can ? change : null,
+    );
+  }
+
   void _openSlideList() {
     final d = c.deck;
     final total = d?.length ?? (_knownPage()?.$2 ?? 0);
@@ -1368,6 +1425,7 @@ class _RemotePageState extends State<RemotePage> {
                     ],
                   ),
                 ),
+              if (c.presentationName != null) _deckRow(ctx),
               const Divider(),
               Flexible(
                 child: ListView.builder(
@@ -1517,6 +1575,7 @@ class _RemotePageState extends State<RemotePage> {
                   tm.target == null ? t('Sin objetivo', 'No target') : '${tm.target!.inMinutes} min',
                   () => showTargetPicker(context, tm),
                 ),
+                _deckRow(ctx),
                 row(Icons.settings_outlined, t('Ajustes', 'Settings'), null, _openSettings),
                 const SizedBox(height: Sp.s),
               ],

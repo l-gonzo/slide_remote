@@ -651,35 +651,107 @@ class Segmented<T> extends StatelessWidget {
 
 /// Grupo de filas (ajustes, listas): un rótulo y una superficie redondeada con líneas entre filas.
 class Panel extends StatelessWidget {
-  const Panel({super.key, this.title, required this.children, this.footer});
+  const Panel({super.key, this.title, required this.children, this.footer, this.open = true, this.onToggle, this.summary, this.icon});
   final String? title;
   final List<Widget> children;
 
   /// Nota debajo del grupo.
   final String? footer;
 
+  /// Con [onToggle], el título se vuelve un encabezado que pliega o despliega el grupo.
+  final bool open;
+  final VoidCallback? onToggle;
+
+  /// Plegado: una línea bajo el título que resume lo que hay dentro.
+  final String? summary;
+
+  /// Ícono del encabezado plegable.
+  final IconData? icon;
+
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+  Widget build(BuildContext context) {
+    final body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Material(
+        color: Pal.raise,
+        borderRadius: BorderRadius.circular(Rad.l),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) Divider(height: 1, indent: Sp.l, endIndent: Sp.l, color: Pal.bg.withValues(alpha: 0.9)),
+            children[i],
+          ],
+        ]),
+      ),
+      if (footer != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.xs, Sp.s, Sp.xs, 0),
+          child: Text(footer!, style: Txt.text(13, color: Pal.muted, height: 1.4)),
+        ),
+    ]);
+    if (onToggle == null || title == null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(Sp.xs, 0, Sp.xs, Sp.s),
             child: Text(title!.toUpperCase(), style: Txt.caption),
           ),
-        Material(
-          color: Pal.raise,
-          borderRadius: BorderRadius.circular(Rad.l),
-          clipBehavior: Clip.antiAlias,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (var i = 0; i < children.length; i++) ...[
-              if (i > 0) Divider(height: 1, indent: Sp.l, endIndent: Sp.l, color: Pal.bg.withValues(alpha: 0.9)),
-              children[i],
-            ],
-          ]),
-        ),
-        if (footer != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.xs, Sp.s, Sp.xs, 0),
-            child: Text(footer!, style: Txt.text(13, color: Pal.muted, height: 1.4)),
-          ),
+        body,
       ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Semantics(
+        button: true,
+        expanded: open,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Rad.s),
+          onTap: onToggle,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.xs, Sp.xs, 0, Sp.xs),
+              child: Row(children: [
+                if (icon != null) ...[
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: open ? Pal.accentSoft : Pal.raise,
+                      borderRadius: BorderRadius.circular(Rad.s),
+                    ),
+                    child: Icon(icon, size: 20, color: open ? Pal.onAccentSoft : Pal.muted),
+                  ),
+                  const SizedBox(width: Sp.m),
+                ],
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Text(title!.toUpperCase(), style: Txt.caption),
+                    if (!open && summary != null && summary!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(summary!,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: Txt.text(13.5, color: Pal.muted, height: 1.3)),
+                      ),
+                  ]),
+                ),
+                AnimatedRotation(
+                  turns: open ? 0.5 : 0,
+                  duration: Mo.of(context, Mo.med),
+                  curve: Mo.curve,
+                  child: Icon(Icons.expand_more_rounded, color: Pal.muted),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+      AnimatedSize(
+        duration: Mo.of(context, Mo.med),
+        curve: Mo.curve,
+        alignment: Alignment.topCenter,
+        child: open
+            ? Padding(padding: const EdgeInsets.only(top: Sp.xs), child: body)
+            : const SizedBox(width: double.infinity),
+      ),
+    ]);
+  }
 }

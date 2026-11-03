@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../common/i18n.dart';
 import '../common/theme.dart';
+import 'stage_widgets.dart';
 import 'talk_timer.dart';
 
 /// Cronómetro compacto: toca para iniciar o pausar; con el cronómetro en pausa aparece ↺ para
@@ -155,6 +156,9 @@ class _TargetSheetState extends State<_TargetSheet> {
   static const _presets = [5, 10, 15, 20, 30, 45, 60];
   late int _min = widget.tm.target?.inMinutes ?? 15;
 
+  /// La sección de avisos: empieza plegada (con su resumen a la vista).
+  bool _alertsOpen = false;
+
   void _set(int m) {
     HapticFeedback.selectionClick();
     setState(() => _min = m.clamp(1, 180));
@@ -170,10 +174,8 @@ class _TargetSheetState extends State<_TargetSheet> {
           Text(t('Tiempo objetivo', 'Target time'), style: Txt.title(26)),
           const SizedBox(height: Sp.s),
           Text(
-            t('El cronómetro cuenta hacia atrás y pasa a ámbar y luego a rojo. El teléfono ${tm.alertsSummary()} '
-                '(se cambia en Ajustes).',
-                'The timer counts down and turns amber, then red. The phone ${tm.alertsSummary()} '
-                '(change it in Settings).'),
+            t('El cronómetro cuenta hacia atrás y pasa a ámbar y luego a rojo. Abajo eliges cuándo vibra.',
+                'The timer counts down and turns amber, then red. Below you choose when it vibrates.'),
             style: Txt.text(15, color: Pal.muted),
           ),
           const SizedBox(height: Sp.l),
@@ -216,8 +218,79 @@ class _TargetSheetState extends State<_TargetSheet> {
               Navigator.pop(context);
             }),
           ],
+          const SizedBox(height: Sp.xl),
+          // Las mismas opciones de Ajustes › Cronómetro, para no tener que ir a buscarlas
+          ListenableBuilder(
+            listenable: tm,
+            builder: (context, _) => Panel(
+              icon: Icons.notifications_none_rounded,
+              title: t('Avisos y vibración', 'Alerts and vibration'),
+              summary: tm.alertsSummary(),
+              open: _alertsOpen,
+              onToggle: () => setState(() => _alertsOpen = !_alertsOpen),
+              footer: t('Se guardan para todas las presentaciones; también están en Ajustes › Cronómetro.',
+                  'Saved for every presentation; also in Settings › Timer.'),
+              children: timerAlertRows(tm),
+            ),
+          ),
         ]),
       ),
     );
   }
+}
+
+/// Opciones de los avisos del cronómetro (fuerza de la vibración, cada aviso y restablecer).
+/// Las usan Ajustes y la hoja del tiempo objetivo.
+List<Widget> timerAlertRows(TalkTimer tm) => [
+      SettingRow(
+        icon: Icons.vibration_rounded,
+        title: t('Fuerza de la vibración', 'Vibration strength'),
+        below: Row(children: [
+          Text(t('Suave', 'Soft'), style: Txt.text(14, color: Pal.muted)),
+          Expanded(child: Slider(value: tm.vibe, onChanged: tm.setVibe, onChangeEnd: (_) => tm.previewVibe())),
+          Text(t('Fuerte', 'Strong'), style: Txt.text(14, color: Pal.muted)),
+        ]),
+      ),
+      for (var i = 0; i < tm.alerts.length; i++) _alertRow(tm, i),
+      SettingRow(
+        icon: Icons.restart_alt_rounded,
+        title: t('Restablecer avisos', 'Reset alerts'),
+        onTap: tm.resetAlerts,
+      ),
+    ];
+
+/// Aviso [i] del cronómetro: minutos antes del final (el último es al terminar) y vibraciones.
+Widget _alertRow(TalkTimer tm, int i) {
+  final a = tm.alerts[i];
+  final last = i == tm.alerts.length - 1;
+  final m = a.left.inMinutes;
+  final (lo, hi) = tm.alertRange(i);
+  return SettingRow(
+    icon: last ? Icons.alarm_rounded : Icons.notifications_none_rounded,
+    title: last ? t('Al terminar', 'When time is up') : t('Quedan $m min', '$m min left'),
+    trailing: last
+        ? null
+        : Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              onPressed: m > lo ? () => tm.setAlert(i, minutes: m - 1) : null,
+              tooltip: t('Un minuto menos', 'One minute less'),
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            IconButton(
+              onPressed: m < hi ? () => tm.setAlert(i, minutes: m + 1) : null,
+              tooltip: t('Un minuto más', 'One minute more'),
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ]),
+    below: Segmented<int>(
+      values: const [0, 1, 2, 3],
+      labels: [t('No vibra', 'Off'), t('1 vez', 'Once'), t('2 veces', 'Twice'), t('3 veces', '3 times')],
+      selected: a.pulses,
+      onChanged: (n) {
+        tm.setAlert(i, pulses: n);
+        tm.previewVibe(n);
+      },
+      accent: true,
+    ),
+  );
 }

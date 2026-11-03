@@ -37,22 +37,86 @@ class SettingsPage extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.l, Sp.xxl + MediaQuery.paddingOf(context).bottom),
               children: [
-                _presenting(context),
-                const SizedBox(height: Sp.xl),
-                _buttons(context),
-                const SizedBox(height: Sp.xl),
-                _notes(context),
-                const SizedBox(height: Sp.xl),
-                _timer(context),
-                const SizedBox(height: Sp.xl),
-                _appearance(),
-                const SizedBox(height: Sp.xl),
-                _about(context),
+                for (final (i, section) in [
+                  _presentation(context),
+                  _presenting(context),
+                  _buttons(context),
+                  _notes(context),
+                  _timer(context),
+                  _appearance(),
+                  _about(context),
+                ].indexed) ...[
+                  if (i > 0) const SizedBox(height: Sp.m),
+                  section,
+                ],
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// Sección plegable [id]: abierta o cerrada según lo último que eligió quien la usa.
+  Panel _section(String id,
+          {required IconData icon, required String title, String? summary, String? footer, required List<Widget> children}) =>
+      Panel(
+        icon: icon,
+        title: title,
+        summary: summary,
+        footer: footer,
+        open: c.sectionOpen(id),
+        onToggle: () => c.toggleSection(id),
+        children: children,
+      );
+
+  // ---------------------------------------------------------------- presentación
+
+  /// La presentación elegida y cómo cambiarla, en todos los modos.
+  Widget _presentation(BuildContext context) {
+    final name = c.presentationName;
+    final browser = c.mode == Mode.browser;
+    void change() {
+      Navigator.pop(context);
+      c.changePresentation();
+    }
+
+    final String subtitle;
+    if (c.notesFromPc) {
+      subtitle = t('Viene de la app de la PC. Para cambiarla, elige otra presentación allá.',
+          'It comes from the desktop app. To change it, choose another presentation there.');
+    } else if (name == null) {
+      subtitle = browser
+          ? t('PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} o PDF.', 'PowerPoint, LibreOffice${c.isIOS ? ', Keynote' : ''} or PDF.')
+          : c.mode == Mode.wifi
+              ? t('Elige un archivo aquí (.pptx, .odp) para ver tus notas, o la presentación en la app de la PC.',
+                  'Choose a file here (.pptx, .odp) to see your notes, or the presentation in the desktop app.')
+              : t('Elige el archivo (.pptx, .odp) para ver tus notas.', 'Choose the file (.pptx, .odp) to see your notes.');
+    } else {
+      final total = browser && c.browser.total > 0 ? c.browser.total : c.deck?.length ?? 0;
+      subtitle = [
+        if (total > 0) t('$total diapositivas', '$total slides'),
+        c.deck != null ? t('con notas', 'with notes') : t('sin notas', 'no notes'),
+      ].join(' · ');
+    }
+    return _section(
+      'presentation',
+      icon: Icons.slideshow_rounded,
+      title: '${t('Presentación', 'Presentation')} · $modeName',
+      summary: name ?? t('Ninguna elegida', 'None chosen'),
+      footer: t('También puedes cambiarla desde «Ir a», en la pantalla principal.',
+          'You can also change it from “Go to”, on the main screen.'),
+      children: [
+        SettingRow(
+          icon: c.notesFromPc ? Icons.computer_rounded : Icons.slideshow_rounded,
+          title: name ?? t('Sin presentación', 'No presentation'),
+          subtitle: subtitle,
+          trailing: c.canChangePresentation
+              ? TextButton(onPressed: change, child: Text(name == null ? t('Elegir', 'Choose') : t('Cambiar', 'Change')))
+              : null,
+          onTap: c.canChangePresentation ? change : null,
+        ),
+      ],
     );
   }
 
@@ -85,8 +149,15 @@ class SettingsPage extends StatelessWidget {
           onChanged: c.setDnd,
         ),
     };
-    return Panel(
+    return _section(
+      'presenting',
+      icon: Icons.co_present_outlined,
       title: t('Al presentar', 'While presenting'),
+      summary: [
+        c.hand == Hand.left ? t('Mano izquierda', 'Left hand') : t('Mano derecha', 'Right hand'),
+        if (c.oneHand) t('una mano', 'one-handed'),
+        if (c.dnd && c.dndState != DndState.unsupported) t('no molestar', 'do not disturb'),
+      ].join(' · '),
       footer: t('«Bloquear», en la barra de acciones: la pantalla deja de responder a toques y gestos; los botones de '
           'volumen siguen cambiando de diapositiva. Mantén presionado para desbloquear.',
           '“Lock”, in the action bar: the screen ignores touches and gestures; the volume buttons still change '
@@ -124,8 +195,15 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buttons(BuildContext context) => Panel(
+  Widget _buttons(BuildContext context) => _section(
+        'buttons',
+        icon: Icons.volume_up_outlined,
         title: t('Botones de volumen', 'Volume buttons'),
+        summary: [
+          c.invert ? t('Invertidos', 'Swapped') : t('Volumen + avanza', 'Volume + goes forward'),
+          if (c.arrows) t('flechas', 'arrow keys'),
+          if (c.holdUp != HoldAction.none || c.holdDown != HoldAction.none) t('con acciones al mantener', 'with hold actions'),
+        ].join(' · '),
         footer: t('Con una acción al mantener presionado, ese botón cambia de diapositiva al soltarlo.',
             'With a hold action, that button changes the slide when you release it.'),
         children: [
@@ -263,60 +341,31 @@ class SettingsPage extends StatelessWidget {
         ),
       ]),
     );
-    if (c.deck == null) {
-      return Panel(
-        title: '${t('Notas del presentador', 'Speaker notes')} · $modeName',
-        footer: t('Cada modo guarda sus propias notas.', 'Each mode keeps its own notes.'),
-        children: [
-          SettingRow(
-            icon: Icons.sticky_note_2_outlined,
-            title: t('Agregar notas', 'Add notes'),
-            subtitle: c.mode == Mode.wifi
-                ? t('Elige la presentación en la app de la PC, o un archivo aquí (.pptx, .odp).',
-                    'Choose the presentation in the desktop app, or a file here (.pptx, .odp).')
-                : t('Elige el archivo de tu presentación (.pptx, .odp).', 'Choose your presentation file (.pptx, .odp).'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () {
-              Navigator.pop(context);
-              c.pickNotes();
-            },
-          ),
-          size,
-        ],
-      );
-    }
-    return Panel(
+    return _section(
+      'notes',
+      icon: Icons.sticky_note_2_outlined,
       title: '${t('Notas del presentador', 'Speaker notes')} · $modeName',
-      footer: t('Con PowerPoint o Impress el teléfono cuenta las pulsaciones (incluidas las animaciones); si se desfasa, '
-          'corrígelo desde “Ir a”. Al transmitir (desde la PC o desde el móvil) se sincroniza solo.',
-          'With PowerPoint or Impress the phone counts the presses (animations included); if it gets out of step, '
-          'fix it from “Go to”. When streaming (from the PC or the phone) it syncs by itself.'),
+      summary: [
+        c.deck == null ? t('Sin notas', 'No notes') : t('${c.deck!.length} diapositivas', '${c.deck!.length} slides'),
+        t('texto ${c.notesFont.round()}', 'text ${c.notesFont.round()}'),
+      ].join(' · '),
+      footer: c.deck == null
+          ? t('Las notas salen del archivo de la presentación (sección «Presentación»). Cada modo guarda las suyas.',
+              'Notes come from the presentation file (“Presentation” section). Each mode keeps its own.')
+          : t('Con PowerPoint o Impress el teléfono cuenta las pulsaciones (incluidas las animaciones); si se desfasa, '
+              'corrígelo desde “Ir a”. Al transmitir (desde la PC o desde el móvil) se sincroniza solo.',
+              'With PowerPoint or Impress the phone counts the presses (animations included); if it gets out of step, '
+              'fix it from “Go to”. When streaming (from the PC or the phone) it syncs by itself.'),
       children: [
-        SettingRow(
-          icon: c.notesFromPc ? Icons.computer_rounded : Icons.description_outlined,
-          title: c.deckName ?? t('presentación', 'presentation'),
-          subtitle: c.notesFromPc
-              ? t('Vienen de la app de la PC. Para cambiarlas, elige otra presentación allá.',
-                  'They come from the desktop app. To change them, choose another presentation there.')
-              : t('${c.deck!.length} diapositivas', '${c.deck!.length} slides'),
-          trailing: c.notesFromPc
-              ? null
-              : TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    c.pickNotes();
-                  },
-                  child: Text(t('Cambiar', 'Change')),
-                ),
-        ),
         size,
-        SettingRow(
-          icon: Icons.first_page_rounded,
-          title: t('Volver a la diapositiva 1', 'Back to slide 1'),
-          subtitle: t('Solo en las notas; no cambia nada en la PC.', 'Only in the notes; nothing changes on the computer.'),
-          onTap: c.restartNotes,
-        ),
-        if (!c.notesFromPc)
+        if (c.deck != null)
+          SettingRow(
+            icon: Icons.first_page_rounded,
+            title: t('Volver a la diapositiva 1', 'Back to slide 1'),
+            subtitle: t('Solo en las notas; no cambia nada en la PC.', 'Only in the notes; nothing changes on the computer.'),
+            onTap: c.restartNotes,
+          ),
+        if (c.deck != null && !c.notesFromPc)
           SettingRow(
             icon: Icons.delete_outline_rounded,
             title: t('Quitar notas', 'Remove notes'),
@@ -333,8 +382,11 @@ class SettingsPage extends StatelessWidget {
 
   Widget _timer(BuildContext context) {
     final tm = c.timer;
-    return Panel(
+    return _section(
+      'timer',
+      icon: Icons.timer_outlined,
       title: t('Cronómetro', 'Timer'),
+      summary: tm.target == null ? t('Sin tiempo objetivo', 'No target time') : '${tm.target!.inMinutes} min · ${tm.alertsSummary()}',
       footer: t('Cuándo vibra y cuántas veces. El cronómetro pasa a ámbar en el primer aviso y a rojo en el segundo.',
           'When it vibrates and how many times. The timer turns amber at the first alert and red at the second.'),
       children: [
@@ -347,66 +399,29 @@ class SettingsPage extends StatelessWidget {
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => showTargetPicker(context, tm),
         ),
-        SettingRow(
-          icon: Icons.vibration_rounded,
-          title: t('Fuerza de la vibración', 'Vibration strength'),
-          below: Row(children: [
-            Text(t('Suave', 'Soft'), style: Txt.text(14, color: Pal.muted)),
-            Expanded(child: Slider(value: tm.vibe, onChanged: tm.setVibe, onChangeEnd: (_) => tm.previewVibe())),
-            Text(t('Fuerte', 'Strong'), style: Txt.text(14, color: Pal.muted)),
-          ]),
-        ),
-        for (var i = 0; i < tm.alerts.length; i++) _alertRow(i),
-        SettingRow(
-          icon: Icons.restart_alt_rounded,
-          title: t('Restablecer avisos', 'Reset alerts'),
-          onTap: tm.resetAlerts,
-        ),
+        ...timerAlertRows(tm),
       ],
-    );
-  }
-
-  /// Aviso [i] del cronómetro: minutos antes del final (el último es al terminar) y vibraciones.
-  Widget _alertRow(int i) {
-    final tm = c.timer;
-    final a = tm.alerts[i];
-    final last = i == tm.alerts.length - 1;
-    final m = a.left.inMinutes;
-    final (lo, hi) = tm.alertRange(i);
-    return SettingRow(
-      icon: last ? Icons.alarm_rounded : Icons.notifications_none_rounded,
-      title: last ? t('Al terminar', 'When time is up') : t('Quedan $m min', '$m min left'),
-      trailing: last
-          ? null
-          : Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(
-                onPressed: m > lo ? () => tm.setAlert(i, minutes: m - 1) : null,
-                tooltip: t('Un minuto menos', 'One minute less'),
-                icon: const Icon(Icons.remove_rounded),
-              ),
-              IconButton(
-                onPressed: m < hi ? () => tm.setAlert(i, minutes: m + 1) : null,
-                tooltip: t('Un minuto más', 'One minute more'),
-                icon: const Icon(Icons.add_rounded),
-              ),
-            ]),
-      below: Segmented<int>(
-        values: const [0, 1, 2, 3],
-        labels: [t('No vibra', 'Off'), t('1 vez', 'Once'), t('2 veces', 'Twice'), t('3 veces', '3 times')],
-        selected: a.pulses,
-        onChanged: (n) {
-          tm.setAlert(i, pulses: n);
-          tm.previewVibe(n);
-        },
-        accent: true,
-      ),
     );
   }
 
   // ---------------------------------------------------------------- apariencia y acerca de
 
-  Widget _appearance() => Panel(
+  Widget _appearance() => _section(
+        'appearance',
+        icon: Icons.palette_outlined,
         title: t('Apariencia', 'Appearance'),
+        summary: [
+          switch (AppTheme.pref) {
+            ThemePref.system => t('Tema del sistema', 'System theme'),
+            ThemePref.light => t('Claro', 'Light'),
+            ThemePref.dark => t('Oscuro', 'Dark'),
+          },
+          switch (I18n.pref) {
+            LangPref.system => t('idioma del sistema', 'system language'),
+            LangPref.es => 'Español',
+            LangPref.en => 'English',
+          },
+        ].join(' · '),
         children: [
           SettingRow(
             icon: Icons.contrast_rounded,
@@ -436,8 +451,11 @@ class SettingsPage extends StatelessWidget {
         ],
       );
 
-  Widget _about(BuildContext context) => Panel(
+  Widget _about(BuildContext context) => _section(
+        'about',
+        icon: Icons.info_outline_rounded,
         title: t('Acerca de', 'About'),
+        summary: 'Zlide $kAppVersion',
         children: [
           SettingRow(
             icon: Icons.info_outline_rounded,

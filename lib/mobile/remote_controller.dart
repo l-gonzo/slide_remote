@@ -272,6 +272,7 @@ class RemoteController extends ChangeNotifier {
     dnd = _prefs.getBool('dnd') ?? true;
     notesFont = (_prefs.getDouble('notes_font') ?? 22).clamp(15, 34);
     aimSensitivity = (_prefs.getDouble('aim_sensitivity') ?? 1).clamp(0.4, 2.5);
+    _openSections = (_prefs.getStringList('settings_sections') ?? const ['presentation']).toSet();
     selectedAddress = _prefs.getString('bt_addr');
     _btAuto = _prefs.getBool('bt_auto') ?? false;
     wifi.preferredName = _prefs.getString('wifi_name');
@@ -458,12 +459,31 @@ class RemoteController extends ChangeNotifier {
   /// último porque apuntando casi recto arriba o abajo no se puede calcular.
   double _pitchX = 1, _pitchZ = 0;
 
-  /// Cuánto de la página recorre el puntero por radián de giro (≈ 35° de lado a lado), con la
-  /// sensibilidad normal.
-  static const _aimGain = 1.6;
+  /// Posición "virtual": puede pasarse un poco del borde. Así, si se sigue girando contra el
+  /// borde, al regresar el puntero sale del borde cuando el teléfono vuelve a apuntar ahí
+  /// (y no antes, que se siente como si el puntero se despegara de la mano).
+  Offset _aimRaw = const Offset(0.5, 0.5);
 
-  /// Giros más lentos que esto (rad/s) son el temblor de la mano: el puntero no se mueve.
-  static const _aimDeadZone = 0.025;
+  /// Filtro 1€ sobre la posición: quieto, quita el temblor; rápido, casi no se atrasa.
+  final _aimFx = _OneEuro(), _aimFy = _OneEuro();
+
+  /// Cuánto de la página recorre el puntero por radián de giro con la sensibilidad normal,
+  /// según la rapidez del giro (como la aceleración del mouse): despacio es preciso (≈ 60° de
+  /// lado a lado) y rápido cruza la página con poco giro (≈ 25°).
+  static const _aimGainSlow = 0.95, _aimGainFast = 2.3;
+
+  /// Rapidez de giro (rad/s) entre las que la ganancia pasa de lenta a rápida.
+  static const _aimSlow = 0.15, _aimFast = 1.6;
+
+  /// Giros más lentos que esto (rad/s) son sobre todo temblor de la mano. No es un corte
+  /// brusco: por debajo el movimiento se atenúa poco a poco (sin "trabarse y saltar").
+  static const _aimDeadZone = 0.035;
+
+  /// Constante de tiempo (s) del suavizado del giro: solo quita el ruido del sensor.
+  static const _aimRateTau = 0.012;
+
+  /// Cuánto puede pasarse la posición virtual del borde (fracción de la página).
+  static const _aimOverflow = 0.12;
 
   /// Página en la que se apunta: la que ve el público.
   int get _aimPage => mode == Mode.browser ? math.max(1, browser.page) : _shownPage;
@@ -488,7 +508,9 @@ class RemoteController extends ChangeNotifier {
         orElse: () => PointerKind.laser);
     final size = InkTools.sizes[(_prefs.getInt('ink_size_laser') ?? 1).clamp(0, InkTools.sizes.length - 1)];
     _aimInk = ink;
-    _aim = const Offset(0.5, 0.5);
+    _aim = _aimRaw = const Offset(0.5, 0.5);
+    _aimFx.reset();
+    _aimFy.reset();
     _yaw = _pitch = 0;
     _pitchX = 1;
     _pitchZ = 0;
@@ -519,20 +541,32 @@ class RemoteController extends ChangeNotifier {
       _pitchX = hx / hn;
       _pitchZ = hz / hn;
     }
-    // Suavizar: quita los saltos del sensor sin que el puntero se sienta atrasado
-    _yaw += (wx * ux + wy * uy + wz * uz - _yaw) * 0.45;
-    _pitch += (wx * _pitchX + wz * _pitchZ - _pitch) * 0.45;
-    double dead(double w) => w.abs() < _aimDeadZone ? 0 : w - _aimDeadZone * w.sign;
-    // Girar rápido recorre más (como un mouse); despacio, más preciso
-    double speed(double w) => _aimGain * aimSensitivity * (0.7 + math.min(w.abs(), 1.5) * 0.4);
-    final yaw = dead(_yaw), pitch = dead(_pitch);
+    // Suavizado ligero del giro, igual sin importar cada cuánto llegan las muestras
+    final a = 1 - math.exp(-dt / _aimRateTau);
+    _yaw += (wx * ux + wy * uy + wz * uz - _yaw) * a;
+    _pitch += (wx * _pitchX + wz * _pitchZ - _pitch) * a;
+    // Rapidez del giro en las dos direcciones juntas: tratar cada eje por separado (zona muerta
+    // y aceleración) hacía que los movimientos en diagonal se pegaran a horizontal o vertical.
+    final w = math.sqrt(_yaw * _yaw + _pitch * _pitch);
+    if (w < 1e-6) return;
+    // Zona muerta suave: w² / (w² + d²) → 0 con el temblor, 1 al mover de verdad
+    final keep = w * w / (w * w + _aimDeadZone * _aimDeadZone);
+    // Aceleración con curva suave entre lenta y rápida
+    final x = ((w - _aimSlow) / (_aimFast - _aimSlow)).clamp(0.0, 1.0);
+    final gain = (_aimGainSlow + (_aimGainFast - _aimGainSlow) * x * x * (3 - 2 * x)) * aimSensitivity;
+    final k = keep * gain * dt;
     // Positivo = a la izquierda / hacia arriba. Las páginas son más anchas que altas: en
     // vertical el mismo giro recorre más fracción de la página.
-    final next = Offset(
-      (_aim.dx - yaw * dt * speed(yaw)).clamp(0.0, 1.0),
-      (_aim.dy - pitch * dt * speed(pitch) * 16 / 9).clamp(0.0, 1.0),
+    const lo = -_aimOverflow, hi = 1 + _aimOverflow;
+    _aimRaw = Offset(
+      (_aimRaw.dx - _yaw * k).clamp(lo, hi),
+      (_aimRaw.dy - _pitch * k * 16 / 9).clamp(lo, hi),
     );
-    if (next == _aim) return;
+    final next = Offset(
+      _aimFx.filter(_aimRaw.dx, dt).clamp(0.0, 1.0),
+      _aimFy.filter(_aimRaw.dy, dt).clamp(0.0, 1.0),
+    );
+    if ((next - _aim).distance < 0.0004) return;
     _aim = next;
     ink.move(_aimPage, _aim, InkTool.laser);
   }
@@ -1269,6 +1303,37 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------- presentación elegida
+
+  /// Nombre de la presentación elegida en este modo (o null si no hay).
+  String? get presentationName => mode == Mode.browser && browser.hasPdf ? browser.pdfName ?? deckName : deckName;
+
+  /// Si se puede cambiar desde el teléfono (en WiFi, las notas que vienen de la PC se cambian allá).
+  bool get canChangePresentation => !notesFromPc;
+
+  /// "Cambiar presentación", igual en todos los modos: en Navegador la que se transmite; en
+  /// Bluetooth y WiFi el archivo de las notas.
+  Future<void> changePresentation() {
+    if (notesFromPc) {
+      _nudge(t('Las notas vienen de la PC: elige otra presentación en la app de la PC.',
+          'The notes come from the computer: choose another presentation in the desktop app.'));
+      return Future.value();
+    }
+    return mode == Mode.browser ? pickPresentation() : pickNotes();
+  }
+
+  // ---------------------------------------------------------------- secciones de Ajustes
+
+  /// Secciones de Ajustes desplegadas (se recuerdan entre sesiones). Por defecto solo
+  /// "Presentación": lo primero que hay que tener a la mano.
+  Set<String> _openSections = {'presentation'};
+  bool sectionOpen(String id) => _openSections.contains(id);
+  void toggleSection(String id) {
+    if (!_openSections.remove(id)) _openSections.add(id);
+    _prefs.setStringList('settings_sections', _openSections.toList());
+    notifyListeners();
+  }
+
   /// Modos Bluetooth y WiFi: elegir el .pptx solo para ver las notas.
   Future<void> pickNotes() async {
     final picked = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: _mobileNotesExtensions);
@@ -1457,4 +1522,32 @@ class _NotesSlot {
   int total = 0; // diapositivas del archivo contando las ocultas
   int slide = 0;
   int step = 0;
+}
+
+/// Filtro "1€" (Casiez y otros, 2012): pasa bajos cuyo corte sube con la velocidad. Quieto
+/// quita el temblor; en movimiento rápido casi no agrega retraso. Unidades: fracción de página.
+class _OneEuro {
+  /// Corte (Hz) quieto; cuánto sube por cada página/s; corte del cálculo de velocidad.
+  static const _minCutoff = 2.2, _beta = 7.0, _dCutoff = 1.0;
+
+  double? _x;
+  double _dx = 0;
+
+  void reset() {
+    _x = null;
+    _dx = 0;
+  }
+
+  static double _alpha(double cutoff, double dt) {
+    final tau = 1 / (2 * math.pi * cutoff);
+    return 1 / (1 + tau / dt);
+  }
+
+  double filter(double x, double dt) {
+    final prev = _x;
+    if (prev == null || dt <= 0) return _x = x;
+    _dx += ((x - prev) / dt - _dx) * _alpha(_dCutoff, dt);
+    final cutoff = _minCutoff + _beta * _dx.abs();
+    return _x = prev + (x - prev) * _alpha(cutoff, dt);
+  }
 }

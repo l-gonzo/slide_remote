@@ -211,6 +211,9 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
         if (gravity == null) gravity = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         motionListener = new SensorEventListener() {
             long last = 0;
+            // Se lee el giroscopio a 200 Hz (menos retraso) y se manda el promedio cada ~8 ms
+            // para no saturar el canal con Flutter
+            double ax, ay, az, adt;
 
             @Override
             public void onSensorChanged(SensorEvent e) {
@@ -226,11 +229,18 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
                 double dt = last == 0 ? 0 : (t - last) / 1e9;
                 last = t;
                 if (dt <= 0 || dt > 0.2) return;
+                ax += e.values[0] * dt;
+                ay += e.values[1] * dt;
+                az += e.values[2] * dt;
+                adt += dt;
+                if (adt < 0.008) return;
+                dt = adt;
                 Map<String, Object> m = new HashMap<>();
                 m.put("type", "motion");
-                m.put("wx", (double) e.values[0]);
-                m.put("wy", (double) e.values[1]);
-                m.put("wz", (double) e.values[2]);
+                m.put("wx", ax / dt);
+                m.put("wy", ay / dt);
+                m.put("wz", az / dt);
+                ax = ay = az = adt = 0;
                 m.put("ux", (double) up[0]);
                 m.put("uy", (double) up[1]);
                 m.put("uz", (double) up[2]);
@@ -241,7 +251,7 @@ public class SlideNativePlugin implements FlutterPlugin, ActivityAware, MethodCh
             @Override
             public void onAccuracyChanged(Sensor sensor, int accuracy) {}
         };
-        sm.registerListener(motionListener, gyro, SensorManager.SENSOR_DELAY_GAME);
+        sm.registerListener(motionListener, gyro, 5000); // 200 Hz: lo más que se permite sin permiso extra
         if (gravity != null) sm.registerListener(motionListener, gravity, SensorManager.SENSOR_DELAY_GAME);
         return true;
     }
