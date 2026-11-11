@@ -587,8 +587,14 @@ tool/package_macos.sh             crea .dmg
 
 ## Licencias
 
+**Zlide es software propietario** (ver [`LICENSE`](LICENSE)): todos los derechos reservados. El código se publica para consulta; no se permite copiarlo, distribuirlo ni venderlo sin permiso. La **política de privacidad** (Zlide no recopila datos) está en https://l-gonzo.github.io/zlide-legal/ (repositorio [`l-gonzo/zlide-legal`](https://github.com/l-gonzo/zlide-legal), sin código de la app): esa es la dirección que se da en Google Play. Dentro de la app se lee en *Ajustes › Acerca de › Política de privacidad* (`lib/mobile/privacy_page.dart`, sin internet). Si cambias la política, cambia las dos.
+
+Componentes de terceros, todos compatibles con vender la app (ninguno es GPL). Sus licencias aparecen en *Ajustes › Acerca de › Licencias*:
+
 - **pdf.js** (modo “Transmitir desde móvil”): Apache 2.0.
-- **LibreOffice** (convertidor de Android): MPL 2.0; el script copia su licencia dentro de la app.
+- **LibreOffice** (convertidor de Android): MPL 2.0, con sus componentes de terceros (NSS y otros, MPL 2.0 y licencias permisivas). La MPL obliga a decir dónde está su código fuente: el aviso en `assets/licenses/LibreOffice.txt` apunta a https://git.libreoffice.org/core (rama usada). Ese archivo lo regenera `tool/build_libreoffice_android.sh`; si cambias de versión de LibreOffice, súbelo junto con el resto. No modifiques archivos de LibreOffice sin publicar esos cambios (la MPL lo exige por archivo; el código propio de Zlide no queda afectado).
+- **libc++** (biblioteca de C++ del NDK de Android, va con LibreOffice): Apache 2.0 con excepciones de LLVM (`assets/licenses/LLVM-libcxx.txt`).
+- **Paquetes de Dart/Flutter:** BSD, MIT y Apache 2.0; `dbus` y `bluez` (solo en la app de Linux) son MPL 2.0 sin modificar. Flutter agrega sus licencias a la app automáticamente.
 - **Tipografías** (incluidas en la app, `assets/fonts/`): Atkinson Hyperlegible Next y Mono (Braille Institute) y Bricolage Grotesque (Mathieu Triay), las tres con SIL Open Font License 1.1. Se guardan como instancias estáticas de las fuentes variables; las licencias aparecen en la pantalla de licencias de la app.
 
 ## Diseño

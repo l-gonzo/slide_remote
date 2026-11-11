@@ -25,6 +25,13 @@ Future<void> main() async {
     ]) {
       yield LicenseEntryWithLineBreaks([pkg], await rootBundle.loadString('assets/fonts/$file'));
     }
+    // Componentes incluidos que no vienen de paquetes de Dart (esos Flutter los agrega solo)
+    yield LicenseEntryWithLineBreaks(['pdf.js'], await rootBundle.loadString('assets/web/PDFJS-LICENSE.txt'));
+    if (Platform.isAndroid) {
+      // Convertidor a PDF/SVG (MPL 2.0, con sus componentes de terceros) y la biblioteca de C++ del NDK
+      yield LicenseEntryWithLineBreaks(['LibreOffice'], await rootBundle.loadString('assets/licenses/LibreOffice.txt'));
+      yield LicenseEntryWithLineBreaks(['libc++ (LLVM)'], await rootBundle.loadString('assets/licenses/LLVM-libcxx.txt'));
+    }
   });
   await I18n.load();
   await AppTheme.load();

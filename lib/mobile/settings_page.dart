@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../common/i18n.dart';
 import '../common/theme.dart';
+import 'privacy_page.dart';
 import 'remote_controller.dart';
 import 'stage_widgets.dart';
 import 'timer_chip.dart';
 
 /// Versión que se muestra en "Acerca de" (la misma de pubspec.yaml).
 const kAppVersion = '2.6.3';
+
+/// Dónde se descarga Zlide para escritorio (Windows, macOS y Linux).
+const kDesktopUrl = 'https://github.com/l-gonzo/zlide_desktop';
 
 /// Ajustes: una pantalla completa con grupos, de lo que más se usa al presentar a lo menos.
 class SettingsPage extends StatelessWidget {
@@ -44,6 +50,7 @@ class SettingsPage extends StatelessWidget {
                   _notes(context),
                   _timer(context),
                   _appearance(),
+                  _desktop(context),
                   _about(context),
                 ].indexed) ...[
                   if (i > 0) const SizedBox(height: Sp.m),
@@ -451,6 +458,64 @@ class SettingsPage extends StatelessWidget {
         ],
       );
 
+  // ---------------------------------------------------------------- app de escritorio
+
+  /// Abre [url] en el navegador; si no se puede, la copia (para abrirla en otro lado).
+  static Future<void> _open(BuildContext context, String url) async {
+    var ok = false;
+    try {
+      ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (ok || !context.mounted) return;
+    Clipboard.setData(ClipboardData(text: url));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(t('No se pudo abrir; enlace copiado', 'Couldn’t open it; link copied'))));
+  }
+
+  /// Enlace para descargar Zlide para escritorio: se abre aquí o se copia para abrirlo en la PC.
+  Widget _desktop(BuildContext context) {
+    void say(String msg) => ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+    void copy() {
+      Clipboard.setData(const ClipboardData(text: kDesktopUrl));
+      say(t('Enlace copiado', 'Link copied'));
+    }
+
+    return _section(
+      'desktop',
+      icon: Icons.computer_rounded,
+      title: t('App para PC', 'Desktop app'),
+      summary: 'Windows · macOS · Linux',
+      children: [
+        SettingRow(
+          icon: Icons.computer_rounded,
+          title: t('Zlide para escritorio', 'Zlide for desktop'),
+          subtitle: t(
+            'Necesaria para «Transmitir desde PC» y para el Bluetooth del iPhone. Descárgala en tu computadora '
+                '(Windows, macOS o Linux).',
+            'Needed for “Stream from PC” and for iPhone Bluetooth. Download it on your computer '
+                '(Windows, macOS or Linux).',
+          ),
+        ),
+        SettingRow(
+          icon: Icons.download_rounded,
+          title: kDesktopUrl.replaceFirst('https://', ''),
+          subtitle: t('Abrir la página de descarga', 'Open the download page'),
+          trailing: const Icon(Icons.open_in_new_rounded, size: 20),
+          onTap: () => _open(context, kDesktopUrl),
+        ),
+        SettingRow(
+          icon: Icons.copy_rounded,
+          title: t('Copiar enlace', 'Copy link'),
+          subtitle: t('Para abrirlo en la PC.', 'To open it on the computer.'),
+          onTap: copy,
+        ),
+      ],
+    );
+  }
+
   Widget _about(BuildContext context) => _section(
         'about',
         icon: Icons.info_outline_rounded,
@@ -467,6 +532,13 @@ class SettingsPage extends StatelessWidget {
             title: t('Licencias', 'Licenses'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => showLicensePage(context: context, applicationName: 'Zlide', applicationVersion: kAppVersion),
+          ),
+          SettingRow(
+            icon: Icons.privacy_tip_outlined,
+            title: t('Política de privacidad', 'Privacy policy'),
+            subtitle: t('Zlide no recopila datos personales.', 'Zlide doesn’t collect personal data.'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PrivacyPage())),
           ),
         ],
       );

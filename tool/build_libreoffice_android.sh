@@ -156,6 +156,31 @@ done
 for lic in "$LO_DIR/instdir/LICENSE" "$LO_DIR/COPYING.MPL"; do
   if [[ -f "$lic" ]]; then cp "$lic" "$PLUGIN/assets/LIBREOFFICE-LICENSE.txt"; break; fi
 done
+# La misma licencia, con el aviso de dónde está el código fuente, en la pantalla "Licencias" de la app
+LO_VER=${LO_BRANCH#libreoffice-}; LO_VER=${LO_VER//-/.}
+{
+  cat <<NOTICE
+Zlide para Android incluye un convertidor basado en LibreOffice $LO_VER
+(rama $LO_BRANCH), distribuido bajo la Mozilla Public License 2.0.
+Se usa sin cambios en su código; solo se ajustó la compilación (se compila
+únicamente lo necesario para presentaciones y dibujos).
+
+Código fuente de LibreOffice: https://git.libreoffice.org/core
+(rama $LO_BRANCH; espejo: https://github.com/LibreOffice/core)
+
+Zlide for Android includes a converter based on LibreOffice $LO_VER
+(branch $LO_BRANCH), distributed under the Mozilla Public License 2.0.
+Its source code is used unmodified; only the build was configured (only what
+is needed for presentations and drawings is compiled).
+
+LibreOffice source code: https://git.libreoffice.org/core
+
+Licencia de LibreOffice y de sus componentes de terceros (incluye NSS, MPL 2.0)
+LibreOffice and third-party component licenses (includes NSS, MPL 2.0):
+
+NOTICE
+  cat "$PLUGIN/assets/LIBREOFFICE-LICENSE.txt"
+} > "$ROOT/assets/licenses/LibreOffice.txt"
 
 so_mb=$(du -sm "$PLUGIN/jniLibs" | cut -f1)
 as_mb=$(du -sm "$PLUGIN/assets" | cut -f1)

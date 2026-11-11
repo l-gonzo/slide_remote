@@ -1,0 +1,26 @@
+Copyright (c) 2026 l-gonzo. Todos los derechos reservados. / All rights reserved.
+
+Zlide es software propietario. El código está publicado para consulta, pero no
+se concede ninguna licencia para copiarlo, modificarlo, distribuirlo, publicarlo
+en tiendas de aplicaciones ni venderlo, total o parcialmente, sin permiso
+escrito del titular.
+
+Zlide is proprietary software. The source code is published for reference only;
+no license is granted to copy, modify, distribute, publish in app stores or sell
+it, in whole or in part, without the copyright holder's written permission.
+
+Componentes de terceros / Third-party components
+------------------------------------------------
+Los componentes de terceros incluidos conservan sus propias licencias, que se
+muestran en la app (Ajustes › Acerca de › Licencias) y se listan en README.md
+(sección "Licencias"):
+
+- pdf.js (assets/web/): Apache License 2.0 — assets/web/PDFJS-LICENSE.txt
+- LibreOffice (convertidor de Android): Mozilla Public License 2.0 —
+  assets/licenses/LibreOffice.txt; código fuente en https://git.libreoffice.org/core
+- libc++ del NDK de Android: Apache License 2.0 with LLVM Exceptions —
+  assets/licenses/LLVM-libcxx.txt
+- Atkinson Hyperlegible Next/Mono y Bricolage Grotesque: SIL Open Font License 1.1 —
+  assets/fonts/OFL-*.txt
+- Paquetes de Dart y Flutter: sus licencias (BSD, MIT, Apache 2.0) se incluyen
+  automáticamente en la app.

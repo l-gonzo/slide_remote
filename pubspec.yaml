@@ -26,6 +26,7 @@ dependencies:
   ffi: ^2.1.0               # teclas en la PC (SendInput / CGEventPost / uinput)
   archive: ">=3.6.0 <5.0.0" # leer el .pptx (es un ZIP) para las notas
   xml: ">=6.5.0 <8.0.0"     # leer las notas dentro del .pptx
+  url_launcher: ^6.3.3      # abrir el enlace de descarga de la app de escritorio (Ajustes)
 
 dev_dependencies:
   flutter_lints: ^5.0.0
@@ -39,6 +40,7 @@ flutter:
     - assets/fonts/OFL-Atkinson.txt
     - assets/fonts/OFL-AtkinsonMono.txt
     - assets/fonts/OFL-Bricolage.txt
+    - assets/licenses/
 
   # Tipografías (OFL; licencias en assets/fonts). Instancias estáticas de las fuentes variables.
   fonts:
