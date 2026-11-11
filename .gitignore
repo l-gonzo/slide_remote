@@ -13,3 +13,6 @@ packages/slide_native/android/src/main/assets/
 # Instaladores (tool/package_*)
 dist/
 __pycache__/
+
+# Videos del tutorial (pesados; no van en el repositorio)
+assets/tutorials/
