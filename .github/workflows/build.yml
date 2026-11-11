@@ -104,3 +104,49 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  # Instaladores de escritorio en el repositorio público de descargas (sin código):
+  # https://github.com/l-gonzo/zlide_desktop — es el enlace de Ajustes › App para PC.
+  # Con nombres fijos, así los enlaces .../releases/latest/download/<archivo> no cambian
+  # de una versión a otra. Necesita el secreto DESKTOP_RELEASE_TOKEN (token de GitHub con
+  # permiso "Contents: Read and write" solo en l-gonzo/zlide_desktop).
+  desktop:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+    steps:
+      - name: ¿Hay token?
+        if: env.TOKEN == ''
+        run: echo "::warning::Falta el secreto DESKTOP_RELEASE_TOKEN; no se publicó en l-gonzo/zlide_desktop."
+      - uses: actions/download-artifact@v4
+        if: env.TOKEN != ''
+        with: { path: dist, merge-multiple: true, pattern: '{linux,windows,macos}' }
+      - name: Nombres fijos
+        if: env.TOKEN != ''
+        run: |
+          set -e
+          mkdir out
+          cp dist/*.exe                 out/Zlide-Windows-Setup.exe
+          cp dist/*-windows-x64.zip     out/Zlide-Windows-portable.zip
+          cp dist/*.dmg                 out/Zlide-macOS.dmg
+          cp dist/*_amd64.deb           out/Zlide-Linux-amd64.deb
+          cp dist/*_linux-amd64.tar.gz  out/Zlide-Linux-amd64.tar.gz
+          ls -l out
+      - uses: softprops/action-gh-release@v2
+        if: env.TOKEN != ''
+        with:
+          repository: l-gonzo/zlide_desktop
+          token: ${{ env.TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: Zlide para escritorio ${{ github.ref_name }}
+          make_latest: true
+          files: out/*
+          body: |
+            **Descarga el de tu sistema / Download for your system:**
+            - **Windows 10/11:** `Zlide-Windows-Setup.exe` (instalador) o `Zlide-Windows-portable.zip`
+            - **macOS:** `Zlide-macOS.dmg` (ábrelo y arrastra Zlide a Aplicaciones)
+            - **Linux:** `Zlide-Linux-amd64.deb` (Ubuntu, Debian, Mint…) o `Zlide-Linux-amd64.tar.gz`
+
+            Instrucciones / Instructions: https://github.com/l-gonzo/zlide_desktop#readme
