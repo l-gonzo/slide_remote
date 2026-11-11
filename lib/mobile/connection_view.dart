@@ -440,6 +440,23 @@ class ConnectionContent extends StatelessWidget {
 
   // ---------------------------------------------------------------- Transmitir desde móvil
 
+  /// Vuelve a leer las IPs del teléfono (y abre el servidor si no estaba corriendo).
+  Future<void> _refreshAddress() async {
+    final b = c.browser;
+    final before = b.urls.firstOrNull;
+    if (b.running) {
+      await b.refreshUrls();
+    } else {
+      await b.start();
+    }
+    final now = b.urls.firstOrNull;
+    onNudge(now == null
+        ? t('Sin red WiFi', 'No WiFi network')
+        : now == before
+            ? t('La dirección no cambió', 'The address didn’t change')
+            : t('Dirección actualizada', 'Address updated'));
+  }
+
   Widget _browserSection() {
     final b = c.browser;
     if (c.converting) {
@@ -521,7 +538,16 @@ class ConnectionContent extends StatelessWidget {
           child: Text('${t('Otras', 'Others')}: ${b.urls.skip(1).map((u) => u.replaceFirst('http://', '')).join('  ·  ')}',
               style: Txt.digits(11.5, color: Pal.muted, weight: FontWeight.w500)),
         ),
-      const SizedBox(height: Sp.l),
+      // La IP cambia si el teléfono se pasa a otra red o activa el punto de acceso
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _refreshAddress,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: Text(t('Actualizar dirección', 'Refresh address')),
+        ),
+      ),
+      const SizedBox(height: Sp.s),
       Panel(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Sp.l, Sp.s, Sp.s, Sp.s),
