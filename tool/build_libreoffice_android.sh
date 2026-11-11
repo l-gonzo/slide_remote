@@ -139,7 +139,7 @@ cp -r "$APP/assets/." "$PLUGIN/assets/"
 
 # fontconfig guarda su caché en /data/data/<id de la app>/: usar el id de Zlide
 APP_ID=$(sed -n -E 's/.*applicationId *= *"([^"]+)".*/\1/p' "$ROOT/android/app/build.gradle.kts" 2>/dev/null | head -1)
-APP_ID=${APP_ID:-dev.lgonzo.slide_remote}
+APP_ID=${APP_ID:-com.zlide.app}
 FONTS_CONF="$PLUGIN/assets/unpack/etc/fonts/fonts.conf"
 if [[ -f "$FONTS_CONF" ]]; then
   sed -i -E "s#/data/data/[^/<]+/fontconfig#/data/data/$APP_ID/fontconfig#" "$FONTS_CONF"

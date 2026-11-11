@@ -70,6 +70,31 @@ def repo():
     return "l-gonzo/slide_remote"
 
 
+def app_id():
+    """applicationId de android/app/build.gradle.kts (el paquete de la app en Play)."""
+    try:
+        m = re.search(r'applicationId\s*=\s*"([^"]+)"', (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "com.zlide.app"
+
+
+def fix_fonts_conf():
+    """fontconfig guarda su caché en /data/data/<paquete>/: que apunte al paquete actual.
+    (El .zip compartido trae el paquete con el que se compiló.) Devuelve True si cambió algo."""
+    conf = PLUGIN / "assets" / "unpack" / "etc" / "fonts" / "fonts.conf"
+    if not conf.is_file():
+        return False
+    old = conf.read_text(encoding="utf-8")
+    new = re.sub(r"/data/data/[^/<]+/fontconfig", f"/data/data/{app_id()}/fontconfig", old)
+    if new != old:
+        conf.write_text(new, encoding="utf-8")
+        return True
+    return False
+
+
 def installed():
     return (PLUGIN / "jniLibs" / "arm64-v8a" / "liblo-native-code.so").is_file() and \
         (PLUGIN / "assets" / "program").is_dir()
@@ -185,6 +210,7 @@ def cmd_fetch():
             z.extractall(PLUGIN)
     if not installed():
         die("El archivo descargado no trae el convertidor completo.")
+    fix_fonts_conf()
     cmd_status()
     print("Ahora: python3 tool/configure.py  y  flutter build apk --release --split-per-abi")
     return 0

@@ -211,6 +211,7 @@ py tool\build.py                      # → dist\: APK, instalador .exe y .zip
 |---|---|---|
 | `python3 tool/build.py` | Todo lo que se puede compilar en esa computadora | todos |
 | `python3 tool/build.py android` | APK (`dist/Zlide-<versión>-android-arm64.apk`, etc.) | todos |
+| `python3 tool/build.py play` | `.aab` firmado para Google Play (`dist/Zlide-<versión>-play.aab`); necesita tu llave en `android/key.properties` | todos |
 | `python3 tool/build.py linux` | `.deb` + `.tar.gz` | Linux |
 | `python3 tool/build.py windows` | Instalador `.exe` + `.zip` | Windows |
 | `python3 tool/build.py macos` | `.dmg` | Mac |
@@ -344,7 +345,7 @@ O copia el `.apk` al teléfono y ábrelo (permite “instalar apps desconocidas�
 
 - **Convertidor a PDF:** solo viene si antes compilaste LibreOffice (ver [abajo](#convertidor-a-pdf-en-android-libreoffice)). Sin él todo funciona menos convertir presentaciones en el modo “Transmitir desde móvil”.
 - **Un solo APK para todos:** `flutter build apk --release` (más pesado).
-- **Google Play:** `flutter build appbundle --release` → `build/app/outputs/bundle/release/app-release.aab`.
+- **Google Play:** `python3 tool/build.py play` → `dist/Zlide-<versión>-play.aab`, firmado con tu llave de subida (ver *Firma propia*; sin ella se detiene, porque Play rechaza la llave de depuración). Cada versión que subas necesita un número de compilación nuevo en `pubspec.yaml`.
 
 **Firma propia (recomendado si vas a distribuir).** Sin ella se usa la llave de depuración de tu PC y otra PC no podría instalar actualizaciones encima. Una sola vez:
 

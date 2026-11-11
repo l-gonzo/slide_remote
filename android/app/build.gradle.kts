@@ -15,7 +15,7 @@ android {
             pickFirsts += listOf("**/libc++_shared.so")
         }
     }
-    namespace = "dev.lgonzo.slide_remote"
+    namespace = "com.zlide.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,7 +26,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dev.lgonzo.slide_remote"
+        applicationId = "com.zlide.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -4,6 +4,7 @@ Compila Zlide y deja los instaladores en dist/. Funciona igual en Linux, macOS y
 
     python3 tool/build.py            # todo lo que se puede compilar en esta computadora
     python3 tool/build.py android    # APK (cualquier sistema)
+    python3 tool/build.py play       # .aab firmado para Google Play (cualquier sistema)
     python3 tool/build.py linux      # .deb + .tar.gz   (solo en Linux)
     python3 tool/build.py windows    # .exe + .zip      (solo en Windows)
     python3 tool/build.py macos      # .dmg             (solo en macOS)
@@ -66,16 +67,47 @@ def version():
     return m.group(1) if m else "0.0.0"
 
 
+def build_number():
+    m = re.search(r"^version:\s*[0-9.]+\+(\d+)", (ROOT / "pubspec.yaml").read_text(encoding="utf-8"), re.M)
+    return m.group(1) if m else "?"
+
+
+def signing_key():
+    """La llave de subida de Play según android/key.properties: (archivo .jks, problema o None)."""
+    props = ROOT / "android/key.properties"
+    if not props.is_file():
+        return None, "falta android/key.properties"
+    vals = dict(l.split("=", 1) for l in props.read_text(encoding="utf-8").splitlines() if "=" in l)
+    store = vals.get("storeFile", "").strip()
+    path = Path(store) if Path(store).is_absolute() else ROOT / "android/app" / store
+    if not store or not path.is_file():
+        return None, f"android/key.properties apunta a una llave que no existe ({store or 'sin storeFile'})"
+    return path, None
+
+
 def ensure_configured(platform_dir):
     if not (ROOT / platform_dir).is_dir() or not (ROOT / ".dart_tool").is_dir():
         log("Preparando el proyecto (tool/configure.py)")
         run([PY, "tool/configure.py"])
 
 
+def fix_converter_app_id():
+    """El convertidor de LibreOffice tiene escrito el paquete de la app (caché de fuentes):
+    que coincida con el applicationId actual antes de compilar."""
+    sys.path.insert(0, str(ROOT / "tool"))
+    try:
+        import libreoffice_android
+        if libreoffice_android.fix_fonts_conf():
+            print(f"   Convertidor: caché de fuentes en /data/data/{libreoffice_android.app_id()}/")
+    finally:
+        sys.path.pop(0)
+
+
 # ---------------------------------------------------------------- objetivos
 
 def build_android():
     ensure_configured("android")
+    fix_converter_app_id()
     lo = (ROOT / "packages/slide_native/android/src/main/jniLibs/arm64-v8a/liblo-native-code.so").is_file()
     if not lo:
         warn("Sin LibreOffice: el APK funciona, pero no convierte presentaciones en el modo Navegador.\n"
@@ -96,6 +128,31 @@ def build_android():
         print(f"   {f.stat().st_size / 1e6:6.1f} MB  {f.relative_to(ROOT)}")
     print("   Instala el de arm64 (casi todos los teléfonos): adb install -r dist/"
           f"Zlide-{v}-android-arm64.apk")
+
+
+def build_play():
+    """App Bundle firmado con la llave de subida (android/key.properties), listo para Play Console."""
+    ensure_configured("android")
+    fix_converter_app_id()
+    key, problem = signing_key()
+    if problem:
+        die(f"No se puede firmar para Google Play: {problem}.\n"
+            "    Play rechaza lo firmado con la llave de depuración. Crea tu llave de subida\n"
+            "    (README → \"Firma propia\") y vuelve a intentarlo.")
+    lo = (ROOT / "packages/slide_native/android/src/main/jniLibs/arm64-v8a/liblo-native-code.so").is_file()
+    if not lo:
+        warn("Sin LibreOffice: la app de Play NO convertiría presentaciones en «Transmitir desde móvil».\n"
+             "    Para incluirlo: python3 tool/libreoffice_android.py fetch")
+    v, n = version(), build_number()
+    log(f"Google Play: .aab {v} (número de compilación {n}), firmado con {key}")
+    run(["flutter", "build", "appbundle", "--release"])
+    src = ROOT / "build/app/outputs/bundle/release/app-release.aab"
+    DIST.mkdir(exist_ok=True)
+    dst = DIST / f"Zlide-{v}-play.aab"
+    shutil.copy2(src, dst)
+    print(f"   {dst.stat().st_size / 1e6:6.1f} MB  {dst.relative_to(ROOT)}")
+    print(f"   Súbelo en Play Console → Versiones. Play no acepta repetir el número de compilación ({n}):\n"
+          "   para la siguiente actualización sube la versión en pubspec.yaml (por ejemplo 2.6.4+12).")
 
 
 def build_linux():
@@ -162,6 +219,9 @@ def doctor():
     lo = (ROOT / "packages/slide_native/android/src/main/jniLibs/arm64-v8a/liblo-native-code.so").is_file()
     print(("  ✔ " if lo else "  · ") + ("LibreOffice para Android instalado" if lo else
           "LibreOffice para Android no instalado (opcional): python3 tool/libreoffice_android.py fetch"))
+    key, problem = signing_key()
+    print(("  ✔ " if key else "  · ") + (f"Llave de subida de Google Play: {key}" if key else
+          f"Sin llave de subida de Google Play ({problem}); solo hace falta para «build.py play»"))
     if HOST == "linux":
         check(tool("clang") and tool("cmake") and tool("ninja"), "Compilador para Linux",
               "Falta clang/cmake/ninja (sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev)")
@@ -192,7 +252,7 @@ def main():
         targets = ["android", HOST]
         if HOST == "macos":
             targets.append("ios")
-    actions = {"android": build_android, "linux": build_linux, "windows": build_windows,
+    actions = {"android": build_android, "play": build_play, "linux": build_linux, "windows": build_windows,
                "macos": build_macos, "ios": build_ios}
     for t in targets:
         if t not in actions:

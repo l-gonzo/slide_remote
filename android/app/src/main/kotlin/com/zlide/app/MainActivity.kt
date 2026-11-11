@@ -1,4 +1,4 @@
-package dev.lgonzo.slide_remote
+package com.zlide.app
 
 import io.flutter.embedding.android.FlutterActivity
 
